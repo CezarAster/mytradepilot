@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trade Edge</title>
+    <meta name="description" content="Find out which of your trades actually make money. Free, and your trades never leave your computer." />
+    <link rel="stylesheet" href="/src/web/style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <p class="eyebrow">Free trade analyzer</p>
+      <h1>Find out which of your trades actually make money.</h1>
+      <p class="lede">Drop in your trade export. In a few seconds you'll see your real edges, your leaks, and what your stop is doing for you.</p>
+      <p class="privacy">🔒 Runs entirely in your browser. Your trades are never uploaded.</p>
+    </header>
+
+    <main>
+      <section class="panel" id="input">
+        <label class="drop" id="drop">
+          <input type="file" id="files" accept=".csv,text/csv" multiple hidden />
+          <strong>Drop CSV files here</strong>
+          <span>or click to choose. Several files at once are fine; duplicates are removed.</span>
+        </label>
+
+        <div class="options">
+          <label>
+            Time zone of your export
+            <select id="tz"></select>
+          </label>
+          <label>
+            Your usual stop (%)
+            <input type="number" id="stop" value="2" min="0.1" max="50" step="0.1" />
+          </label>
+          <button type="button" id="demo" class="link">Try it with sample trades</button>
+        </div>
+        <details class="help">
+          <summary>Which files work?</summary>
+          <ul>
+            <li><b>TradingView</b>: Bar Replay or Strategy Tester → List of trades → Export (CSV). Use your chart's time zone above.</li>
+            <li><b>Any broker</b>: an executions/fills export with columns for symbol, side, quantity, price and time. Fills are matched into round-trip trades automatically.</li>
+          </ul>
+        </details>
+      </section>
+
+      <p id="status" class="status" role="status"></p>
+      <div id="report"></div>
+    </main>
+
+    <footer>
+      <p>Educational tool, not investment advice. Past results don't predict future results.</p>
+    </footer>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>
