@@ -5,8 +5,8 @@
 //   Kit (ConvertKit): provider 'kit', id = the form ID (the number in the form's URL)
 // While provider is null the signup box stays hidden.
 export const SIGNUP: { provider: 'buttondown' | 'kit' | null; id: string } = {
-  provider: null,
-  id: '',
+  provider: 'buttondown',
+  id: 'MyTradePilot',
 };
 
 function endpoint(): { url: string; field: string } | null {
