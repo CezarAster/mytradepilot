@@ -2,7 +2,7 @@
 // One row per trade (or per partial fill), with entry/exit, profit, MAE/MFE in dollars,
 // and the exit order's name ("Stop loss", "Profit target", ...).
 import { toNumber } from '../csv.ts';
-import { zonedTimeToUtc } from '../time.ts';
+import { hasSlashedDates, zonedTimeToUtc } from '../time.ts';
 import type { ParseOptions, ParseResult } from '../types.ts';
 import { columns, hasColumns } from './columns.ts';
 import { groupRoundTrips, type RoundTrip } from './roundTrips.ts';
@@ -24,6 +24,7 @@ export function parseNinjaTraderTrades(rows: string[][], opts: ParseOptions): Pa
     entryTime: col('Entry time'),
     exitTime: col('Exit time'),
     exitName: col('Exit name'),
+    account: col('Account'),
     profit: col('Profit'),
     commission: col('Commission'),
     mae: col('MAE'),
@@ -31,10 +32,14 @@ export function parseNinjaTraderTrades(rows: string[][], opts: ParseOptions): Pa
   };
   const warnings: string[] = [];
   const trips: RoundTrip[] = [];
+  // NinjaTrader writes dates in the Windows regional format. US English always shows
+  // AM/PM, so slashed dates on a 24-hour clock are from a day-first locale (en-GB, en-AU).
+  const times = rows.slice(1).flatMap((r) => [r[c.entryTime] ?? '', r[c.exitTime] ?? '']);
+  const dayFirst = opts.dayFirst ?? (hasSlashedDates(times) && !times.some((t) => /\d\s*[ap]\.?m\.?$/i.test(t)));
 
   rows.slice(1).forEach((r, i) => {
-    const entryTime = zonedTimeToUtc(r[c.entryTime] ?? '', opts.timeZone);
-    const exitTime = zonedTimeToUtc(r[c.exitTime] ?? '', opts.timeZone);
+    const entryTime = zonedTimeToUtc(r[c.entryTime] ?? '', opts.timeZone, dayFirst);
+    const exitTime = zonedTimeToUtc(r[c.exitTime] ?? '', opts.timeZone, dayFirst);
     const qty = toNumber(r[c.qty]);
     const entryPrice = toNumber(r[c.entryPrice]);
     const exitPrice = toNumber(r[c.exitPrice]);
@@ -49,6 +54,7 @@ export function parseNinjaTraderTrades(rows: string[][], opts: ParseOptions): Pa
     const cash = (i: number) => (i >= 0 && Number.isFinite(toNumber(r[i])) ? toNumber(r[i]) : null);
     trips.push({
       rawSymbol: r[c.symbol].trim(),
+      account: c.account >= 0 ? r[c.account] : undefined,
       direction: pos as 'long' | 'short',
       entryTime,
       exitTime,
@@ -64,5 +70,5 @@ export function parseNinjaTraderTrades(rows: string[][], opts: ParseOptions): Pa
     });
   });
 
-  return { format: 'NinjaTrader trades', trades: groupRoundTrips(trips, opts.fileName, warnings), warnings };
+  return { format: 'NinjaTrader trades', trades: groupRoundTrips(trips, opts.fileName, warnings, false), warnings };
 }

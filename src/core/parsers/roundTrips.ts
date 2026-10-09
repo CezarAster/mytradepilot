@@ -1,12 +1,14 @@
 // Helpers for platforms that export closed trades (entry + exit on one row) with their own P&L.
-// They often write one row per lot or partial fill, so rows that share a symbol,
-// direction and entry time are merged into one trade.
+// They often write one row per lot or partial fill, so rows of one position (same account,
+// contract and direction, each entered before the previous rows were all closed) are
+// merged into one trade, the way a scale-in or partial exit shows up in a fill list.
 import { contractFor } from '../contracts.ts';
 import type { Direction, Trade } from '../types.ts';
 
 export interface RoundTrip {
   /** Symbol as exported (MNQH6, MNQ 03-26, CON.F.US.MNQ.H26). */
   rawSymbol: string;
+  account?: string;
   direction: Direction;
   entryTime: Date;
   exitTime: Date;
@@ -41,14 +43,19 @@ export function inferMultiplier(rows: { entryPrice: number; exitPrice: number; q
   return Number(median.toPrecision(4));
 }
 
-/** Contract size per symbol: our table first, then what the P&L implies, else 1 with a warning. */
+/**
+ * Contract size per symbol: our table first, then what the P&L implies, else 1 with a warning.
+ * `futuresOnly` is for platforms that only trade futures, where a bare "ES" is the future;
+ * elsewhere (NinjaTrader also trades stocks) it's the stock.
+ */
 export function multipliers(
   rows: { rawSymbol: string; entryPrice: number; exitPrice: number; qty: number; gross: number; direction: Direction }[],
   warnings: string[],
+  futuresOnly: boolean,
 ): Map<string, { symbol: string; multiplier: number }> {
   const out = new Map<string, { symbol: string; multiplier: number }>();
   for (const raw of new Set(rows.map((r) => r.rawSymbol))) {
-    const c = contractFor(raw, true);
+    const c = contractFor(raw, futuresOnly);
     if (c.isFutures || c.multiplier !== 1) {
       out.set(raw, { symbol: c.symbol, multiplier: c.multiplier });
       continue;
@@ -60,16 +67,26 @@ export function multipliers(
   return out;
 }
 
-export function groupRoundTrips(rows: RoundTrip[], source: string, warnings: string[]): Trade[] {
-  const sizes = multipliers(rows, warnings);
-  const groups = new Map<string, RoundTrip[]>();
-  for (const r of rows) {
-    const k = `${r.rawSymbol}|${r.direction}|${r.entryTime.getTime()}`;
-    groups.set(k, [...(groups.get(k) ?? []), r]);
+export function groupRoundTrips(rows: RoundTrip[], source: string, warnings: string[], futuresOnly: boolean): Trade[] {
+  const sizes = multipliers(rows, warnings, futuresOnly);
+  const groups: RoundTrip[][] = [];
+  const current = new Map<string, { rows: RoundTrip[]; start: number; until: number }>();
+  for (const r of [...rows].sort((a, b) => a.entryTime.getTime() - b.entryTime.getTime())) {
+    const k = `${r.account ?? ''}|${r.rawSymbol}|${r.direction}`;
+    const entry = r.entryTime.getTime();
+    const g = current.get(k);
+    if (g && (entry < g.until || entry === g.start)) {
+      g.rows.push(r);
+      g.until = Math.max(g.until, r.exitTime.getTime());
+    } else {
+      const fresh = { rows: [r], start: entry, until: r.exitTime.getTime() };
+      current.set(k, fresh);
+      groups.push(fresh.rows);
+    }
   }
 
   const trades: Trade[] = [];
-  for (const g of groups.values()) {
+  for (const g of groups) {
     const first = g[0];
     const { symbol, multiplier } = sizes.get(first.rawSymbol)!;
     const qty = g.reduce((s, r) => s + r.qty, 0);

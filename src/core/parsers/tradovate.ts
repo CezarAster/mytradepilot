@@ -1,7 +1,8 @@
 // Tradovate (also NinjaTrader's web/mobile app and many prop firms on Tradovate):
 // Reports → Performance → download CSV. One row per matched lot, buy and sell side by
 // side, P&L before commissions. Rows are turned back into fills so scale-ins and
-// partial exits become one trade.
+// partial exits become one trade. Fill ids grow over time, so they order fills that
+// share a second.
 import { toNumber } from '../csv.ts';
 import { zonedTimeToUtc } from '../time.ts';
 import type { ParseOptions, ParseResult } from '../types.ts';
@@ -24,8 +25,8 @@ export function parseTradovatePerformance(rows: string[][], opts: ParseOptions):
     const qty = toNumber(r[c.qty]);
     const buyPrice = toNumber(r[c.buyPrice]);
     const sellPrice = toNumber(r[c.sellPrice]);
-    const bought = zonedTimeToUtc(r[c.boughtTimestamp] ?? '', opts.timeZone);
-    const sold = zonedTimeToUtc(r[c.soldTimestamp] ?? '', opts.timeZone);
+    const bought = zonedTimeToUtc(r[c.boughtTimestamp] ?? '', opts.timeZone, opts.dayFirst);
+    const sold = zonedTimeToUtc(r[c.soldTimestamp] ?? '', opts.timeZone, opts.dayFirst);
     if (!(qty > 0) || !Number.isFinite(buyPrice) || !Number.isFinite(sellPrice) || !bought || !sold) {
       warnings.push(`Row ${i + 2} couldn't be read; skipped.`);
       return [];
@@ -46,22 +47,29 @@ export function parseTradovatePerformance(rows: string[][], opts: ParseOptions):
     }];
   });
 
-  const sizes = multipliers(lots, warnings);
+  const sizes = multipliers(lots, warnings, true);
   // A fill matched against several lots shows up on several rows; count it once per row's qty.
-  const fills = new Map<string, Fill>();
-  const add = (id: string, f: Fill) => {
-    const prev = fills.get(id);
+  const fills = new Map<string, Fill & { id: string }>();
+  const add = (key: string, id: string, f: Fill) => {
+    const prev = fills.get(key);
     if (prev) prev.signedQty += f.signedQty;
-    else fills.set(id, f);
+    else fills.set(key, { ...f, id });
   };
+  let missingIds = false;
   lots.forEach((l, i) => {
     const { symbol, multiplier } = sizes.get(l.rawSymbol)!;
-    const base = { symbol, fee: 0, multiplier, stop: false };
-    const buyId = c.buyFillId >= 0 && l.r[c.buyFillId] ? `b${l.r[c.buyFillId]}` : `b-row${i}`;
-    const sellId = c.sellFillId >= 0 && l.r[c.sellFillId] ? `s${l.r[c.sellFillId]}` : `s-row${i}`;
-    add(buyId, { ...base, signedQty: l.qty, price: l.buyPrice, time: l.bought, rawTime: l.r[c.boughtTimestamp] });
-    add(sellId, { ...base, signedQty: -l.qty, price: l.sellPrice, time: l.sold, rawTime: l.r[c.soldTimestamp] });
+    const base = { symbol, position: l.rawSymbol, fee: 0, multiplier, stop: false };
+    const buyId = c.buyFillId >= 0 ? l.r[c.buyFillId] : '';
+    const sellId = c.sellFillId >= 0 ? l.r[c.sellFillId] : '';
+    if (!buyId || !sellId) missingIds = true;
+    add(buyId ? `b${buyId}` : `b-row${i}`, buyId, { ...base, signedQty: l.qty, price: l.buyPrice, time: l.bought, rawTime: l.r[c.boughtTimestamp] });
+    add(sellId ? `s${sellId}` : `s-row${i}`, sellId, { ...base, signedQty: -l.qty, price: l.sellPrice, time: l.sold, rawTime: l.r[c.soldTimestamp] });
   });
 
-  return { format: 'Tradovate performance', trades: buildTrades([...fills.values()], opts.fileName, warnings), warnings };
+  // Numeric ids compared by length then digits (they can be longer than a double holds exactly).
+  const byId = (a: { id: string }, b: { id: string }) => a.id.length - b.id.length || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const ordered = missingIds ? [...fills.values()] : [...fills.values()].sort(byId);
+  if (missingIds) warnings.push('Some rows have no fill ids, so trades that open and close in the same second may be mislabelled.');
+  if (lots.length) warnings.push("Tradovate's Performance report has no commissions or fees, so P&L here is before costs.");
+  return { format: 'Tradovate performance', trades: buildTrades(ordered, opts.fileName, warnings), warnings };
 }

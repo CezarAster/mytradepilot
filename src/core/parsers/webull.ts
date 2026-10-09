@@ -1,6 +1,6 @@
 // Webull: Orders → Order History → export (desktop app). One row per order; only the
 // filled part counts. Times carry a zone abbreviation ("EST"/"EDT").
-import { contractFor } from '../contracts.ts';
+import { contractFor, optionExpiry } from '../contracts.ts';
 import { toNumber } from '../csv.ts';
 import { zonedTimeToUtc } from '../time.ts';
 import type { ParseOptions, ParseResult } from '../types.ts';
@@ -36,14 +36,16 @@ export function parseWebullOrders(rows: string[][], opts: ParseOptions): ParseRe
     }
     const side = readSide(r[c.side] ?? '');
     const price = toNumber(r[c.price]);
-    const time = zonedTimeToUtc(r[c.time] ?? '', opts.timeZone);
+    const time = zonedTimeToUtc(r[c.time] ?? '', opts.timeZone, opts.dayFirst);
     if (!side || !Number.isFinite(price) || !time) {
       warnings.push(`Row ${i + 2} couldn't be read; skipped.`);
       return;
     }
-    const contract = contractFor(r[c.symbol]);
+    const raw = (r[c.symbol] ?? '').toUpperCase();
+    const contract = contractFor(raw);
     fills.push({
       symbol: contract.symbol,
+      position: raw,
       signedQty: side * qty,
       price,
       fee: 0,
@@ -51,6 +53,7 @@ export function parseWebullOrders(rows: string[][], opts: ParseOptions): ParseRe
       rawTime: r[c.time],
       multiplier: contract.multiplier,
       stop: c.type >= 0 && isStopOrder(r[c.type]),
+      expiry: optionExpiry(raw),
     });
   });
 

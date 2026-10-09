@@ -1,4 +1,5 @@
 import { parseCsv } from '../csv.ts';
+import { detectDayFirst } from '../time.ts';
 import type { ParseOptions, ParseResult, Trade } from '../types.ts';
 import { isFillList, parseFillList } from './fills.ts';
 import { isIbkrStatement, parseIbkrStatement } from './ibkr.ts';
@@ -20,10 +21,18 @@ export const SUPPORTED_FORMATS = [
   'any fill list with symbol, quantity, price and time columns',
 ];
 
-export function parseFile(text: string, opts: ParseOptions): ParseResult {
+export function parseFile(text: string, options: ParseOptions): ParseResult {
   const rows = parseCsv(text).map((r) => r.map((f) => f.trim()));
-  if (rows.length < 2) return { format: 'unknown', trades: [], warnings: [`${opts.fileName}: no rows found.`] };
+  if (rows.length < 2) return { format: 'unknown', trades: [], warnings: [`${options.fileName}: no rows found.`] };
+  const opts = { ...options, dayFirst: options.dayFirst ?? detectDayFirst(rows.flat()) };
+  try {
+    return detect(rows, opts);
+  } catch (e) {
+    return { format: 'unknown', trades: [], warnings: [`${opts.fileName}: couldn't be read (${(e as Error).message}).`] };
+  }
+}
 
+function detect(rows: string[][], opts: ParseOptions): ParseResult {
   // Sectioned statements first: their first row isn't the trade header.
   if (isIbkrStatement(rows)) return parseIbkrStatement(rows, opts);
   if (isThinkorswimStatement(rows)) return parseThinkorswimStatement(rows, opts);

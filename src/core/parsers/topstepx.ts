@@ -19,8 +19,8 @@ export function parseTopstepXTrades(rows: string[][], opts: ParseOptions): Parse
   const trips: RoundTrip[] = [];
 
   rows.slice(1).forEach((r, i) => {
-    const entryTime = zonedTimeToUtc(r[c.EnteredAt] ?? '', opts.timeZone);
-    const exitTime = zonedTimeToUtc(r[c.ExitedAt] ?? '', opts.timeZone);
+    const entryTime = zonedTimeToUtc(r[c.EnteredAt] ?? '', opts.timeZone, opts.dayFirst);
+    const exitTime = zonedTimeToUtc(r[c.ExitedAt] ?? '', opts.timeZone, opts.dayFirst);
     const qty = toNumber(r[c.Size]);
     const entryPrice = toNumber(r[c.EntryPrice]);
     const exitPrice = toNumber(r[c.ExitPrice]);
@@ -48,5 +48,5 @@ export function parseTopstepXTrades(rows: string[][], opts: ParseOptions): Parse
     });
   });
 
-  return { format: 'TopstepX trades', trades: groupRoundTrips(trips, opts.fileName, warnings), warnings };
+  return { format: 'TopstepX trades', trades: groupRoundTrips(trips, opts.fileName, warnings, true), warnings };
 }

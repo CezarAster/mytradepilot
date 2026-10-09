@@ -63,3 +63,15 @@ export function contractFor(symbol: string, futuresOnly = false): Contract {
   if (isOptionSymbol(s)) return { symbol: s, multiplier: 100, isFutures: false };
   return { symbol: s, multiplier: 1, isFutures: false };
 }
+
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+/** Expiry of an option symbol (OCC, or "SPY 20 MAR 26 600 CALL" / "AAPL 20MAR26 200 C"), after the close. */
+export function optionExpiry(symbol: string): Date | null {
+  const s = symbol.trim().toUpperCase();
+  let m = /^[A-Z.]{1,6}\s*(\d{2})(\d{2})(\d{2})[CP]\d{8}$/.exec(s);
+  if (m) return new Date(Date.UTC(2000 + +m[1], +m[2] - 1, +m[3], 21));
+  m = /^\S+ (\d{1,2}) ?([A-Z]{3}) ?(\d{2}) [\d.]+ (?:C|P|CALL|PUT)$/.exec(s);
+  if (m && MONTHS.includes(m[2])) return new Date(Date.UTC(2000 + +m[3], MONTHS.indexOf(m[2]), +m[1], 21));
+  return null;
+}
