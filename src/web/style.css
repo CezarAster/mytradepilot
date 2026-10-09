@@ -63,8 +63,19 @@ footer {
   margin: 0 auto;
   padding: 0 16px;
 }
+.brand {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 20px 16px 0;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.brand .logo {
+  color: var(--accent);
+}
 .hero {
-  padding-top: 56px;
+  padding-top: 40px;
   padding-bottom: 24px;
 }
 .eyebrow {

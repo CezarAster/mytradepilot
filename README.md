@@ -1,4 +1,4 @@
-# Trade Edge
+# TradePilot
 
 Free trade analyzer: drop in a trade export and see where you make money, where you give it back, and what your stop is doing. Everything runs in the browser; trades are never uploaded.
 
