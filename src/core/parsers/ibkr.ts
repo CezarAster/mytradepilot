@@ -7,7 +7,7 @@ import { toNumber } from '../csv.ts';
 import { zonedTimeToUtc } from '../time.ts';
 import type { ParseOptions, ParseResult } from '../types.ts';
 import { columns } from './columns.ts';
-import { buildTrades, isClosingFill, type Fill } from './fills.ts';
+import { buildTrades, openCloseKind, type Fill } from './fills.ts';
 
 export function isIbkrStatement(rows: string[][]): boolean {
   return rows.some((r) => r[0] === 'Trades' && r[1] === 'Header');
@@ -64,7 +64,8 @@ export function parseIbkrStatement(rows: string[][], opts: ParseOptions): ParseR
       rawTime,
       multiplier,
       stop: false,
-      closeOnly: isClosingFill(r[col('Code')]),
+      closeOnly: openCloseKind(r[col('Code')]) === 'close',
+      flip: openCloseKind(r[col('Code')]) === 'flip',
       expiry: optionExpiry(raw),
     });
   });

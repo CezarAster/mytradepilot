@@ -53,17 +53,23 @@ function detect(rows: string[][], opts: ParseOptions): ParseResult {
 
 /**
  * Combine trades from several files:
- * - drops exact duplicates (overlapping exports of the same account),
+ * - drops exact duplicates (overlapping exports of the same account), keeping the closed
+ *   version of a trade that one export still shows as open,
  * - merges partial fills (same symbol, direction, entry/exit time and price) into one trade,
  * - sorts by entry time.
  */
 export function combineTrades(lists: Trade[][]): Trade[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const unique: Trade[] = [];
   for (const t of lists.flat()) {
-    if (seen.has(t.key)) continue;
-    seen.add(t.key);
-    unique.push(t);
+    const i = seen.get(t.key);
+    if (i === undefined) {
+      seen.set(t.key, unique.length);
+      unique.push(t);
+    } else if (!unique[i].exitTime && t.exitTime) {
+      // A shorter export caught the trade while it was still open; keep the closed one.
+      unique[i] = t;
+    }
   }
 
   const merged = new Map<string, Trade>();

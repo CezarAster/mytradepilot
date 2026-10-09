@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { contractFor } from '../src/core/contracts.ts';
 import { toNumber } from '../src/core/csv.ts';
-import { parseFile } from '../src/core/parsers/index.ts';
+import { combineTrades, parseFile } from '../src/core/parsers/index.ts';
 import { zonedTimeToUtc } from '../src/core/time.ts';
 
 const NY = 'America/New_York';
@@ -290,4 +290,101 @@ test('fill list: no side column and only positive quantities is refused, not rea
 test('fill list: an option still open after its expiry says so', () => {
   const res = parseFile('Symbol,Side,Qty,Price,Time\nAAPL260320C00200000,Buy,1,2.00,2026-03-02 10:00', { timeZone: NY, fileName: 'f.csv' });
   assert.match(res.warnings[0], /still open after its expiry/);
+});
+
+test('time: every IBKR Flex date/time setting, year-first and dashed dates, month names', () => {
+  const at = (s: string, dayFirst = false) => zonedTimeToUtc(s, NY, dayFirst)?.toISOString();
+  for (const s of ['20260302;09:35:12', '20260302 09:35:12', '2026-03-02;093512', '03/02/2026;093512', '20260302,093512', '20260302093512', '02-Mar-26 09:35:12', '2026/3/2 9:35:12']) {
+    assert.equal(at(s), '2026-03-02T14:35:12.000Z', s);
+  }
+  assert.equal(at('02-03-2026 09:35:12', true), '2026-03-02T14:35:12.000Z');
+  assert.equal(at('3/2/2026 13:05:00 PM'), '2026-03-02T18:05:00.000Z');
+  assert.equal(at('2026-03-02'), undefined);
+});
+
+const NT_HEAD = 'Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,MAE,MFE,ETD,Bars';
+
+test('ninjatrader: an ambiguous file goes by time zone (en-AU with am/pm, US on a 24-hour clock)', () => {
+  const au = [NT_HEAD, '1,ES 03-26,Sim101,,Long,1,6000,6001,10/03/2026 1:35:00 am,10/03/2026 1:40:00 am,Entry,Exit,$50,$50,$0,$0,$50,$0,5'].join('\n');
+  const res = parseFile(au, { timeZone: 'Australia/Sydney', fileName: 'nt.csv' });
+  assert.equal(res.trades[0].entryTime.toISOString(), '2026-03-09T14:35:00.000Z');
+  assert.match(res.warnings.join(), /read day first/);
+  // "6/03/2026" (unpadded day, padded month) is day first whatever the zone.
+  const dmm = au.replaceAll('10/03/2026', '6/03/2026');
+  assert.equal(parseFile(dmm, { timeZone: NY, fileName: 'nt.csv' }).trades[0].entryTime.toISOString(), '2026-03-06T06:35:00.000Z');
+  const us = [NT_HEAD, '1,ES 03-26,Sim101,,Long,1,6000,6001,03/02/2026 09:35:00,03/02/2026 09:40:00,Entry,Exit,$50,$50,$0,$0,$50,$0,5'].join('\n');
+  const usRes = parseFile(us, { timeZone: 'America/Chicago', fileName: 'nt.csv' });
+  assert.equal(usRes.trades[0].entryTime.toISOString(), '2026-03-02T15:35:00.000Z');
+  assert.deepEqual(usRes.warnings, []);
+});
+
+test('fill list: day-first guess for non-US zones in the Americas too (Brazil)', () => {
+  const csv = ['Symbol,Side,Qty,Price,Time', 'PETR4,Buy,100,30,02/03/2026 10:00', 'PETR4,Sell,100,31,02/03/2026 11:00'].join('\n');
+  const res = parseFile(csv, { timeZone: 'America/Sao_Paulo', fileName: 'f.csv' });
+  assert.equal(res.trades[0].entryTime.toISOString(), '2026-03-02T13:00:00.000Z'); // 2 March, not February 3
+  assert.match(res.warnings.join(), /read day first/);
+});
+
+test('combine: identical trades in two accounts are both kept; a closed trade beats its open copy', () => {
+  const fills = ['Account,Symbol,Side,Qty,Price,Time', 'A,AAPL,Buy,10,100,2026-03-02 10:00', 'A,AAPL,Sell,10,101,2026-03-02 11:00', 'B,AAPL,Buy,10,100,2026-03-02 10:00', 'B,AAPL,Sell,10,101,2026-03-02 11:00'].join('\n');
+  const res = parseFile(fills, { timeZone: NY, fileName: 'f.csv' });
+  assert.equal(combineTrades([res.trades]).reduce((s, t) => s + t.pnl, 0), 20);
+
+  const nt = [NT_HEAD, '1,ES 03-26,Acct1,,Long,1,6000,6001,3/2/2026 9:35:00 AM,3/2/2026 9:40:00 AM,Entry,Exit,$50,$50,$0,$0,$50,$0,5', '2,ES 03-26,Acct2,,Long,1,6000,6001,3/2/2026 9:35:00 AM,3/2/2026 9:40:00 AM,Entry,Exit,$50,$100,$0,$0,$50,$0,5'].join('\n');
+  const ntRes = parseFile(nt, { timeZone: NY, fileName: 'nt.csv' });
+  assert.equal(combineTrades([ntRes.trades]).reduce((s, t) => s + t.pnl, 0), 100);
+
+  const early = parseFile(fills.split('\n').slice(0, 2).join('\n'), { timeZone: NY, fileName: 'early.csv' });
+  const all = combineTrades([early.trades, res.trades]);
+  assert.equal(all.filter((t) => t.exitTime === null).length, 0);
+  assert.equal(all.reduce((s, t) => s + t.pnl, 0), 20);
+});
+
+test('ibkr: a C;O flip with nothing open closed a position from before the file, so it is left out', () => {
+  const head = 'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,Proceeds,Comm/Fee,Code';
+  const csv = [
+    head,
+    'Trades,Data,Order,Stocks,USD,AAPL,"2026-03-02, 09:31:00",-200,180,36000,-1,C;O',
+    'Trades,Data,Order,Stocks,USD,AAPL,"2026-03-02, 09:50:00",100,179,-17900,-1,C',
+    'Trades,Data,Order,Stocks,USD,AAPL,"2026-03-02, 10:00:00",100,175,-17500,-1,O',
+    'Trades,Data,Order,Stocks,USD,AAPL,"2026-03-02, 10:30:00",-100,180,18000,-1,C',
+  ].join('\n');
+  const res = parseFile(csv, { timeZone: NY, fileName: 'ib.csv' });
+  assert.deepEqual(res.trades.map((t) => [t.direction, t.pnl]), [['long', 498]]);
+  assert.match(res.warnings.join(), /2 closing fills/);
+});
+
+test('thinkorswim: same-second fees split by quantity; unknown futures are flagged', () => {
+  const csv = [
+    'Cash Balance',
+    'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE',
+    '3/3/26,09:45:00,TRD,="1",SPREAD,,-2.60,-112.60,1000',
+    '3/3/26,10:30:00,TRD,="2",SPREAD,,-2.60,147.40,1000',
+    '',
+    'Account Trade History',
+    ',Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type',
+    ',3/3/26 09:45:00,VERTICAL,BUY,+1,TO OPEN,SPY,20 MAR 26,600,CALL,3.20,1.10,LMT',
+    ',,,SELL,-1,TO OPEN,SPY,20 MAR 26,605,CALL,2.10,CREDIT,',
+    ',3/3/26 10:30:00,VERTICAL,SELL,-1,TO CLOSE,SPY,20 MAR 26,600,CALL,4.00,1.50,LMT',
+    ',,,BUY,+1,TO CLOSE,SPY,20 MAR 26,605,CALL,2.50,DEBIT,',
+    ',3/4/26 10:00:00,FUTURE,BUY,+1,TO OPEN,/XYZH26,,,FUTURE,100,100,MKT',
+    ',3/4/26 10:30:00,FUTURE,SELL,-1,TO CLOSE,/XYZH26,,,FUTURE,101,101,MKT',
+  ].join('\n');
+  const res = parseFile(csv, { timeZone: NY, fileName: 'tos.csv' });
+  near(res.trades.find((t) => t.symbol.includes('600'))!.pnl, 80 - 2.6);
+  near(res.trades.find((t) => t.symbol.includes('605'))!.pnl, -40 - 2.6);
+  assert.match(res.warnings.join(), /contract size of \/XYZH26/);
+});
+
+test('ninjatrader: a re-entry inside a position counts the largest position held, not every lot', () => {
+  const csv = [
+    NT_HEAD,
+    '1,MNQ 03-26,Sim101,,Long,1,21000,21010,3/2/2026 10:00:00 AM,3/2/2026 10:10:00 AM,Entry,Exit,$20,$20,$0,$0,$20,$0,10',
+    '2,MNQ 03-26,Sim101,,Long,1,21000,21010,3/2/2026 10:02:00 AM,3/2/2026 10:03:00 AM,Entry,Exit,$20,$40,$0,$0,$20,$0,1',
+    '3,MNQ 03-26,Sim101,,Long,1,21000,21010,3/2/2026 10:04:00 AM,3/2/2026 10:05:00 AM,Entry,Exit,$20,$60,$0,$0,$20,$0,1',
+  ].join('\n');
+  const [t] = parseFile(csv, { timeZone: NY, fileName: 'nt.csv' }).trades;
+  assert.equal(t.qty, 2);
+  near(t.pnl, 60);
+  near(t.returnPct, (60 / (21000 * 2 * 2)) * 100);
 });

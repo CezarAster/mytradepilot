@@ -4,7 +4,7 @@
 // trade and opens the next with the remainder.
 import { contractFor, optionExpiry } from '../contracts.ts';
 import { toNumber } from '../csv.ts';
-import { hasSlashedDates, zonedTimeToUtc } from '../time.ts';
+import { guessDayFirst, hasSlashedDates, zonedTimeToUtc } from '../time.ts';
 import type { Direction, ParseOptions, ParseResult, Trade } from '../types.ts';
 
 const ALIASES: Record<string, string[]> = {
@@ -53,10 +53,12 @@ export interface Fill {
   /** Filled by a stop order. */
   stop: boolean;
   /**
-   * The broker marked this fill as closing. If there's nothing open for it to close, the
-   * position was opened before the file starts, so the fill is left out.
+   * The broker marked this fill as closing (or as closing and reopening the other way). If
+   * there's nothing open for it to close, the position was opened before the file starts,
+   * so the fill is left out: how much of it closed that position can't be known.
    */
   closeOnly?: boolean;
+  flip?: boolean;
   /** Option expiry, to explain a position that is still open after it. */
   expiry?: Date | null;
 }
@@ -71,12 +73,13 @@ export function readSide(s: string): 1 | -1 | 0 {
 
 export const isStopOrder = (s: string | undefined) => /\b(stp|stop|trstp|trail)/i.test(s ?? '');
 
-/** "C", "TO CLOSE", IBKR codes like "C;P": a closing fill (but not "C;O", a flip). */
-export function isClosingFill(s: string | undefined): boolean {
+/** "C", "TO CLOSE", IBKR codes like "C;P" -> close; "C;O" -> flip (closes, then opens the other way). */
+export function openCloseKind(s: string | undefined): 'close' | 'flip' | null {
   const v = (s ?? '').trim().toUpperCase();
-  if (/^(C|CLOSE|CLOSING|TO CLOSE)$/.test(v)) return true;
+  if (/^(C|CLOSE|CLOSING|TO CLOSE)$/.test(v)) return 'close';
   const codes = v.split(/[;,]/).map((c) => c.trim());
-  return codes.includes('C') && !codes.includes('O');
+  if (!codes.includes('C')) return null;
+  return codes.includes('O') ? 'flip' : 'close';
 }
 
 export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult {
@@ -89,8 +92,8 @@ export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult
   // Flex Queries can list each order, its executions and closed lots; keep one level.
   if (cols.level >= 0) {
     const level = (r: string[]) => (r[cols.level] ?? '').trim().toUpperCase();
-    const keep = data.some(({ r }) => level(r) === 'EXECUTION') ? 'EXECUTION' : 'ORDER';
-    data = data.filter(({ r }) => level(r) === keep || (r[cols.symbol] ?? '').toLowerCase() === headerSymbol);
+    const keep = ['EXECUTION', 'ORDER'].find((l) => data.some(({ r }) => level(r) === l));
+    if (keep) data = data.filter(({ r }) => level(r) === keep || (r[cols.symbol] ?? '').toLowerCase() === headerSymbol);
   }
   if (cols.side < 0 && !data.some(({ r }) => toNumber(r[cols.qty]) < 0)) {
     return {
@@ -98,6 +101,16 @@ export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult
       trades: [],
       warnings: [`${opts.fileName}: no Buy/Sell column, and every quantity is positive, so buys and sells can't be told apart.`],
     };
+  }
+
+  // Generic exports follow the broker's or the computer's conventions; when no date settles
+  // day/month order, go by the user's time zone and say so.
+  let dayFirst = opts.dayFirst;
+  const dateCells = data.flatMap(({ r }) => [r[cols.time] ?? '', cols.date >= 0 ? (r[cols.date] ?? '') : '']);
+  if (dayFirst === undefined && hasSlashedDates(dateCells)) {
+    const guess = guessDayFirst(dateCells, opts.timeZone);
+    dayFirst = guess.dayFirst;
+    if (guess.warning) warnings.push(guess.warning);
   }
 
   for (const { r, line } of data) {
@@ -108,10 +121,10 @@ export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult
     const qty = Math.abs(rawQty);
     const price = toNumber(r[cols.price]);
     let rawTime = (r[cols.time] ?? '').trim();
-    let time = zonedTimeToUtc(rawTime, opts.timeZone, opts.dayFirst);
+    let time = zonedTimeToUtc(rawTime, opts.timeZone, dayFirst);
     if (!time && cols.date >= 0 && cols.date !== cols.time) {
       rawTime = `${(r[cols.date] ?? '').trim()} ${rawTime}`;
-      time = zonedTimeToUtc(rawTime, opts.timeZone, opts.dayFirst);
+      time = zonedTimeToUtc(rawTime, opts.timeZone, dayFirst);
     }
     if (!side || !Number.isFinite(qty) || qty === 0 || !Number.isFinite(price) || !time) {
       warnings.push(`Row ${line} couldn't be read; skipped.`);
@@ -131,20 +144,19 @@ export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult
       rawTime,
       multiplier: mult > 0 ? mult : contract.multiplier,
       stop: cols.orderType >= 0 && isStopOrder(r[cols.orderType]),
-      closeOnly: cols.openClose >= 0 && isClosingFill(r[cols.openClose]),
+      closeOnly: cols.openClose >= 0 && openCloseKind(r[cols.openClose]) === 'close',
+      flip: cols.openClose >= 0 && openCloseKind(r[cols.openClose]) === 'flip',
       expiry: optionExpiry(raw),
     });
   }
 
-  // Month-first is the US convention; say so when a non-US user's file can't tell.
-  if (opts.dayFirst === undefined && !opts.timeZone.startsWith('America/') && hasSlashedDates(fills.map((f) => f.rawTime))) {
-    warnings.push(`Dates like 03/02 were read month first (March 2), since no date in the file settles it.`);
-  }
   return { format: 'Fill list', trades: buildTrades(fills, opts.fileName, warnings), warnings };
 }
 
 interface OpenTrade {
   symbol: string;
+  /** Account + exact contract, so identical trades in two accounts aren't taken for duplicates. */
+  positionKey: string;
   direction: Direction;
   entryTime: Date;
   rawTime: string;
@@ -173,6 +185,7 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
 
   const start = (f: Fill, qty: number, fee: number): OpenTrade => ({
     symbol: f.symbol,
+    positionKey: f.position ?? f.symbol,
     direction: qty > 0 ? 'long' : 'short',
     entryTime: f.time,
     rawTime: f.rawTime,
@@ -196,7 +209,7 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
     const gross = avgExit === null ? 0 : sign * (avgExit - avgEntry) * t.exitQty * t.multiplier;
     const pnl = gross - t.fees;
     return {
-      key: `${t.symbol}|${t.rawTime}|${t.direction}|${t.entryQty}|${avgEntry}`,
+      key: `${t.positionKey}|${t.rawTime}|${t.direction}|${t.entryQty}|${avgEntry}`,
       symbol: t.symbol,
       direction: t.direction,
       entryTime: t.entryTime,
@@ -218,7 +231,7 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
     const key = f.position ?? f.symbol;
     const cur = open.get(key);
     const sameWay = cur !== undefined && Math.sign(f.signedQty) === Math.sign(cur.position);
-    if (f.closeOnly && (!cur || sameWay)) {
+    if ((f.closeOnly || f.flip) && (!cur || sameWay)) {
       preexisting++;
       continue;
     }

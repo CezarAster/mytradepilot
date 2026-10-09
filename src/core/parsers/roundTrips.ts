@@ -67,6 +67,19 @@ export function multipliers(
   return out;
 }
 
+/** Largest position held at once across a group's rows (exits before entries at the same time). */
+function peakPosition(rows: RoundTrip[]): number {
+  const events = rows.flatMap((r) => [
+    { t: r.entryTime.getTime(), q: r.qty },
+    { t: r.exitTime.getTime(), q: -r.qty },
+  ]);
+  events.sort((a, b) => a.t - b.t || a.q - b.q);
+  let pos = 0;
+  let peak = 0;
+  for (const e of events) peak = Math.max(peak, (pos += e.q));
+  return peak;
+}
+
 export function groupRoundTrips(rows: RoundTrip[], source: string, warnings: string[], futuresOnly: boolean): Trade[] {
   const sizes = multipliers(rows, warnings, futuresOnly);
   const groups: RoundTrip[][] = [];
@@ -89,18 +102,22 @@ export function groupRoundTrips(rows: RoundTrip[], source: string, warnings: str
   for (const g of groups) {
     const first = g[0];
     const { symbol, multiplier } = sizes.get(first.rawSymbol)!;
-    const qty = g.reduce((s, r) => s + r.qty, 0);
-    const entryPrice = g.reduce((s, r) => s + r.entryPrice * r.qty, 0) / qty;
-    const exitPrice = g.reduce((s, r) => s + r.exitPrice * r.qty, 0) / qty;
+    const traded = g.reduce((s, r) => s + r.qty, 0);
+    const entryPrice = g.reduce((s, r) => s + r.entryPrice * r.qty, 0) / traded;
+    const exitPrice = g.reduce((s, r) => s + r.exitPrice * r.qty, 0) / traded;
     const last = g.reduce((a, b) => (b.exitTime > a.exitTime ? b : a));
     const pnl = g.reduce((s, r) => s + r.gross - r.fees, 0);
+    const qty = peakPosition(g);
+    // Return on the largest position held, as for fill lists; excursions are per row, so
+    // they're scaled by everything traded.
     const value = entryPrice * qty * multiplier;
+    const tradedValue = entryPrice * traded * multiplier;
     const cash = (pick: (r: RoundTrip) => number | null) =>
       g.every((r) => pick(r) !== null) ? g.reduce((s, r) => s + Math.abs(pick(r)!), 0) : null;
     const mae = cash((r) => r.maeCash);
     const mfe = cash((r) => r.mfeCash);
     trades.push({
-      key: `${first.rawSymbol}|${first.rawEntryTime}|${first.direction}|${qty}|${entryPrice}`,
+      key: `${first.account ?? ''}|${first.rawSymbol}|${first.rawEntryTime}|${first.direction}|${traded}|${entryPrice}`,
       symbol,
       direction: first.direction,
       entryTime: first.entryTime,
@@ -110,8 +127,8 @@ export function groupRoundTrips(rows: RoundTrip[], source: string, warnings: str
       qty,
       pnl,
       returnPct: (pnl / value) * 100,
-      mfePct: mfe === null ? null : (mfe / value) * 100,
-      maePct: mae === null ? null : -(mae / value) * 100,
+      mfePct: mfe === null ? null : (mfe / tradedValue) * 100,
+      maePct: mae === null ? null : -(mae / tradedValue) * 100,
       stoppedOut: last.stoppedOut,
       fills: g.length,
       source,

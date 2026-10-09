@@ -2,7 +2,7 @@
 // One row per trade (or per partial fill), with entry/exit, profit, MAE/MFE in dollars,
 // and the exit order's name ("Stop loss", "Profit target", ...).
 import { toNumber } from '../csv.ts';
-import { hasSlashedDates, zonedTimeToUtc } from '../time.ts';
+import { guessDayFirst, hasSlashedDates, zonedTimeToUtc } from '../time.ts';
 import type { ParseOptions, ParseResult } from '../types.ts';
 import { columns, hasColumns } from './columns.ts';
 import { groupRoundTrips, type RoundTrip } from './roundTrips.ts';
@@ -32,10 +32,15 @@ export function parseNinjaTraderTrades(rows: string[][], opts: ParseOptions): Pa
   };
   const warnings: string[] = [];
   const trips: RoundTrip[] = [];
-  // NinjaTrader writes dates in the Windows regional format. US English always shows
-  // AM/PM, so slashed dates on a 24-hour clock are from a day-first locale (en-GB, en-AU).
+  // NinjaTrader writes dates in the computer's regional format (03/02/2026 is March 2 in
+  // the US, 3 February in the UK and Australia), so an ambiguous file goes by time zone.
   const times = rows.slice(1).flatMap((r) => [r[c.entryTime] ?? '', r[c.exitTime] ?? '']);
-  const dayFirst = opts.dayFirst ?? (hasSlashedDates(times) && !times.some((t) => /\d\s*[ap]\.?m\.?$/i.test(t)));
+  let dayFirst = opts.dayFirst ?? false;
+  if (opts.dayFirst === undefined && hasSlashedDates(times)) {
+    const guess = guessDayFirst(times, opts.timeZone);
+    dayFirst = guess.dayFirst;
+    if (guess.warning) warnings.push(guess.warning);
+  }
 
   rows.slice(1).forEach((r, i) => {
     const entryTime = zonedTimeToUtc(r[c.entryTime] ?? '', opts.timeZone, dayFirst);
