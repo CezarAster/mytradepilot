@@ -39,9 +39,16 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
+/** "1,234.50", "$(25.00)", "-$25", "+100", "@12.50" -> number; blank or dash -> NaN. */
 export function toNumber(s: string | undefined): number {
   if (s === undefined) return NaN;
-  const t = s.trim().replace(/[$,]/g, '');
+  let t = s.trim().replace(/[$,@\s]/g, '');
   if (t === '' || t === '—' || t === '-') return NaN;
-  return Number(t);
+  let sign = 1;
+  const paren = /^([-+]?)\((.*)\)$/.exec(t);
+  if (paren) {
+    sign = -1;
+    t = paren[2];
+  }
+  return t === '' ? NaN : sign * Number(t);
 }

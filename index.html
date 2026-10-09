@@ -39,7 +39,14 @@
           <summary>Which files work?</summary>
           <ul>
             <li><b>TradingView</b>: Bar Replay or Strategy Tester → List of trades → Export (CSV). Use your chart's time zone above.</li>
-            <li><b>Any broker</b>: an executions/fills export with columns for symbol, side, quantity, price and time. Fills are matched into round-trip trades automatically.</li>
+            <li><b>Tradovate</b> (and prop firms on it): Reports → Performance → download CSV.</li>
+            <li><b>NinjaTrader 8</b>: Trade Performance → Trades → right-click → Export.</li>
+            <li><b>TopstepX</b> / ProjectX: Trades → Export.</li>
+            <li><b>Webull</b>: Orders → Order History → Export.</li>
+            <li><b>thinkorswim</b>: Monitor → Account Statement → Export to file (the whole statement is fine).</li>
+            <li><b>Interactive Brokers</b>: an Activity Statement in CSV, or a Flex Query of trades.</li>
+            <li><b>Any other broker</b>: an executions/fills export with columns for symbol, quantity, price and time (plus side, unless sells are negative). Fills are matched into round-trip trades automatically.</li>
+            <li>Futures P&amp;L uses each contract's point value (ES, NQ, MNQ, CL, GC, …); options count ×100.</li>
           </ul>
         </details>
       </section>

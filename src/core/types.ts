@@ -36,4 +36,6 @@ export interface ParseOptions {
   /** Time zone the export's timestamps are written in (TradingView uses your chart's zone). */
   timeZone: string;
   fileName: string;
+  /** Slashed dates are day first (13/03/2026). Set by parseFile from the whole file; undefined if it can't tell. */
+  dayFirst?: boolean;
 }

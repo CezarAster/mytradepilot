@@ -16,7 +16,8 @@ npm run build      # static site in dist/, deployable anywhere (Netlify, Vercel,
 
 ## Layout
 
-- `src/core/parsers/` turns CSV files into trades: the TradingView trade list (Bar Replay / Strategy Tester) and a generic broker fill list (matched into round trips FIFO).
+- `src/core/parsers/` turns CSV files into trades: the TradingView trade list (Bar Replay / Strategy Tester), Tradovate performance, NinjaTrader 8 trades, TopstepX trades, Webull order history, thinkorswim account statements, Interactive Brokers activity statements, and a generic broker fill list (matched into round trips FIFO; also covers IBKR Flex Queries).
+- `src/core/contracts.ts` knows futures point values and option ×100 so P&L comes out in dollars; `src/core/time.ts` reads the date formats brokers write (US dates, AM/PM, zone names, UTC offsets).
 - `src/core/parsers/index.ts` combines files, drops duplicates from overlapping exports, and merges partial fills.
 - `src/core/analyze.ts` tags each trade (New York entry time, trade # of the day, what came before, hold time) and finds edges, leaks and weak spots. Small groups are shrunk toward the overall average so 3 lucky trades aren't called an edge.
 - `src/web/` is the page.
@@ -32,4 +33,4 @@ Every push to `main` runs the tests and deploys to GitHub Pages (`.github/workfl
 
 ## Adding a broker
 
-Write a parser that returns `Trade[]` (see `src/core/types.ts`), add its detection to `parseFile`, and add a fixture plus a test.
+Write a parser that returns `Trade[]` (see `src/core/types.ts`), add its detection to `parseFile`, and add a fixture plus a test (`test/fixtures/brokers/`, `test/brokers.test.ts`). Fill-based exports can reuse `buildTrades` from `fills.ts`; exports of closed trades with their own P&L can reuse `groupRoundTrips` from `roundTrips.ts`.

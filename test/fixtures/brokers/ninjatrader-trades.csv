@@ -1,0 +1,4 @@
+Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,MAE,MFE,ETD,Bars,
+1,ES 03-26,Sim101,,Long,1,6000.00,6004.00,3/2/2026 9:35:00 AM,3/2/2026 9:50:00 AM,Entry,Profit target,$195.70,$195.70,$4.30,$50.00,$212.50,$16.80,15,
+2,ES 03-26,Sim101,,Short,1,6010.00,6012.00,3/2/2026 1:05:00 PM,3/2/2026 1:20:00 PM,Entry,Stop loss,($104.30),$91.40,$4.30,$125.00,$37.50,$141.80,15,
+3,ES 03-26,Sim101,,Short,1,6010.00,6012.00,3/2/2026 1:05:00 PM,3/2/2026 1:20:00 PM,Entry,Stop loss,($104.30),($12.90),$4.30,$125.00,$37.50,$141.80,15,
