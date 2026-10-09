@@ -1,22 +1,44 @@
 import { parseCsv } from '../csv.ts';
 import type { ParseOptions, ParseResult, Trade } from '../types.ts';
 import { isFillList, parseFillList } from './fills.ts';
+import { isIbkrStatement, parseIbkrStatement } from './ibkr.ts';
+import { isNinjaTraderTrades, parseNinjaTraderTrades } from './ninjatrader.ts';
+import { isThinkorswimStatement, parseThinkorswimStatement } from './thinkorswim.ts';
+import { isTopstepXTrades, parseTopstepXTrades } from './topstepx.ts';
 import { isTradingViewTrades, parseTradingViewTrades } from './tradingviewReplay.ts';
+import { isTradovatePerformance, parseTradovatePerformance } from './tradovate.ts';
+import { isWebullOrders, parseWebullOrders } from './webull.ts';
+
+export const SUPPORTED_FORMATS = [
+  'TradingView trade list',
+  'Tradovate performance report',
+  'NinjaTrader 8 trades',
+  'TopstepX trades',
+  'Webull order history',
+  'thinkorswim account statement',
+  'Interactive Brokers activity statement or Flex Query',
+  'any fill list with symbol, quantity, price and time columns',
+];
 
 export function parseFile(text: string, opts: ParseOptions): ParseResult {
-  const rows = parseCsv(text);
+  const rows = parseCsv(text).map((r) => r.map((f) => f.trim()));
   if (rows.length < 2) return { format: 'unknown', trades: [], warnings: [`${opts.fileName}: no rows found.`] };
-  const header = rows[0].map((h) => h.trim());
-  rows[0] = header;
 
+  // Sectioned statements first: their first row isn't the trade header.
+  if (isIbkrStatement(rows)) return parseIbkrStatement(rows, opts);
+  if (isThinkorswimStatement(rows)) return parseThinkorswimStatement(rows, opts);
+
+  const header = rows[0];
   if (isTradingViewTrades(header)) return parseTradingViewTrades(rows, opts);
+  if (isTradovatePerformance(header)) return parseTradovatePerformance(rows, opts);
+  if (isNinjaTraderTrades(header)) return parseNinjaTraderTrades(rows, opts);
+  if (isTopstepXTrades(header)) return parseTopstepXTrades(rows, opts);
+  if (isWebullOrders(header)) return parseWebullOrders(rows, opts);
   if (isFillList(header)) return parseFillList(rows, opts);
   return {
     format: 'unknown',
     trades: [],
-    warnings: [
-      `${opts.fileName}: unrecognized format. Supported: TradingView trade list, or a fill list with symbol, side, qty, price and time columns.`,
-    ],
+    warnings: [`${opts.fileName}: unrecognized format. Supported: ${SUPPORTED_FORMATS.join('; ')}.`],
   };
 }
 

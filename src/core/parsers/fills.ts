@@ -2,26 +2,32 @@
 // Fills are matched into round-trip trades: a trade opens when the position leaves
 // zero and closes when it returns to zero; a fill that flips the position closes one
 // trade and opens the next with the remainder.
+import { contractFor } from '../contracts.ts';
 import { toNumber } from '../csv.ts';
 import { zonedTimeToUtc } from '../time.ts';
 import type { Direction, ParseOptions, ParseResult, Trade } from '../types.ts';
 
 const ALIASES: Record<string, string[]> = {
-  symbol: ['symbol', 'ticker', 'instrument', 'underlying'],
+  symbol: ['symbol', 'ticker', 'instrument', 'underlying', 'contract'],
   side: ['side', 'action', 'buy/sell', 'b/s', 'type'],
-  qty: ['qty', 'quantity', 'shares', 'filled qty', 'size'],
-  price: ['price', 'fill price', 'avg price', 'execution price', 'filled price'],
-  time: ['time', 'date/time', 'datetime', 'date and time', 'execution time', 'filled time', 'timestamp'],
-  fee: ['fee', 'fees', 'commission', 'comm'],
+  qty: ['qty', 'quantity', 'shares', 'filled qty', 'size', 'contracts'],
+  price: ['price', 'fill price', 'avg price', 'execution price', 'filled price', 'tradeprice', 't. price', 'trade price'],
+  time: ['time', 'date/time', 'datetime', 'date and time', 'execution time', 'filled time', 'timestamp', 'exec time'],
+  date: ['date', 'trade date', 'tradedate'],
+  fee: ['fee', 'fees', 'commission', 'commissions', 'comm', 'ibcommission', 'comm/fee'],
+  multiplier: ['multiplier', 'mult'],
+  orderType: ['order type', 'ordertype'],
 };
 
 function findColumns(header: string[]): Record<string, number> | null {
   const norm = header.map((h) => h.trim().toLowerCase());
   const cols: Record<string, number> = {};
   for (const [field, names] of Object.entries(ALIASES)) {
-    cols[field] = norm.findIndex((h) => names.includes(h));
+    cols[field] = names.map((n) => norm.indexOf(n)).find((i) => i >= 0) ?? -1;
   }
-  const required = ['symbol', 'side', 'qty', 'price', 'time'];
+  // A "Time" column that holds only the time of day needs the "Date" column next to it.
+  if (cols.time < 0 && cols.date >= 0) cols.time = cols.date;
+  const required = ['symbol', 'qty', 'price', 'time'];
   return required.every((f) => cols[f] >= 0) ? cols : null;
 }
 
@@ -29,21 +35,27 @@ export function isFillList(header: string[]): boolean {
   return findColumns(header) !== null;
 }
 
-interface Fill {
+export interface Fill {
   symbol: string;
   signedQty: number; // + buy, - sell
   price: number;
   fee: number;
   time: Date;
   rawTime: string;
+  /** Dollars per 1.0 price move per unit (futures point value, 100 for options). */
+  multiplier: number;
+  /** Filled by a stop order. */
+  stop: boolean;
 }
 
-function readSide(s: string): 1 | -1 | 0 {
+export function readSide(s: string): 1 | -1 | 0 {
   const t = s.trim().toLowerCase();
-  if (/^(b|buy|bot|bought|buy to cover|cover|btc|bto|long)/.test(t)) return 1;
-  if (/^(s|sell|sld|sold|short|sell short|ss|stc|sto)/.test(t)) return -1;
+  if (/^(b|buy|bot|bought|cover|btc|bto|long)\b/.test(t)) return 1;
+  if (/^(s|sell|sld|sold|short|ss|stc|sto)\b/.test(t)) return -1;
   return 0;
 }
+
+export const isStopOrder = (s: string | undefined) => /\b(stp|stop|trstp|trail)/i.test(s ?? '');
 
 export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult {
   const cols = findColumns(rows[0])!;
@@ -51,16 +63,30 @@ export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult
   const fills: Fill[] = [];
 
   rows.slice(1).forEach((r, i) => {
-    const side = readSide(r[cols.side] ?? '');
-    const qty = Math.abs(toNumber(r[cols.qty]));
+    const rawQty = toNumber(r[cols.qty]);
+    const side = cols.side >= 0 ? readSide(r[cols.side] ?? '') : (Math.sign(rawQty) as 1 | -1 | 0);
+    const qty = Math.abs(rawQty);
     const price = toNumber(r[cols.price]);
-    const time = zonedTimeToUtc(r[cols.time] ?? '', opts.timeZone);
+    let rawTime = (r[cols.time] ?? '').trim();
+    if (cols.date >= 0 && cols.date !== cols.time && !/\d[-/]\d/.test(rawTime)) rawTime = `${r[cols.date].trim()} ${rawTime}`;
+    const time = zonedTimeToUtc(rawTime, opts.timeZone);
     if (!side || !Number.isFinite(qty) || qty === 0 || !Number.isFinite(price) || !time) {
       warnings.push(`Row ${i + 2} couldn't be read; skipped.`);
       return;
     }
     const fee = cols.fee >= 0 ? Math.abs(toNumber(r[cols.fee])) || 0 : 0;
-    fills.push({ symbol: r[cols.symbol].trim().toUpperCase(), signedQty: side * qty, price, fee, time, rawTime: r[cols.time] });
+    const contract = contractFor(r[cols.symbol]);
+    const mult = cols.multiplier >= 0 ? toNumber(r[cols.multiplier]) : NaN;
+    fills.push({
+      symbol: contract.symbol,
+      signedQty: side * qty,
+      price,
+      fee,
+      time,
+      rawTime,
+      multiplier: mult > 0 ? mult : contract.multiplier,
+      stop: cols.orderType >= 0 && isStopOrder(r[cols.orderType]),
+    });
   });
 
   return { format: 'Fill list', trades: buildTrades(fills, opts.fileName, warnings), warnings };
@@ -78,6 +104,8 @@ interface OpenTrade {
   exitValue: number; // sum qty*price of exits
   fees: number;
   fills: number;
+  multiplier: number;
+  stop: boolean;
 }
 
 export function buildTrades(fills: Fill[], source: string, warnings: string[]): Trade[] {
@@ -97,13 +125,15 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
     exitValue: 0,
     fees: fee,
     fills: 1,
+    multiplier: f.multiplier,
+    stop: false,
   });
 
   const finish = (symbol: string, t: OpenTrade, exitTime: Date | null): Trade => {
     const avgEntry = t.entryCost / t.entryQty;
     const avgExit = t.exitQty > 0 ? t.exitValue / t.exitQty : null;
     const sign = t.direction === 'long' ? 1 : -1;
-    const gross = avgExit === null ? 0 : sign * (avgExit - avgEntry) * t.exitQty;
+    const gross = avgExit === null ? 0 : sign * (avgExit - avgEntry) * t.exitQty * t.multiplier;
     const pnl = gross - t.fees;
     return {
       key: `${symbol}|${t.rawTime}|${t.direction}|${t.entryQty}|${avgEntry}`,
@@ -115,10 +145,10 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
       exitPrice: avgExit,
       qty: t.maxQty,
       pnl,
-      returnPct: (pnl / (avgEntry * t.maxQty)) * 100,
+      returnPct: (pnl / (avgEntry * t.maxQty * t.multiplier)) * 100,
       mfePct: null,
       maePct: null,
-      stoppedOut: false,
+      stoppedOut: t.stop,
       fills: t.fills,
       source,
     };
@@ -149,6 +179,7 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
     cur.fills++;
     cur.position += Math.sign(f.signedQty) * closing;
     if (cur.position === 0) {
+      cur.stop = f.stop;
       trades.push(finish(f.symbol, cur, f.time));
       open.delete(f.symbol);
       const remainder = f.signedQty - Math.sign(f.signedQty) * closing;

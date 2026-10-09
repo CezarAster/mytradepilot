@@ -61,11 +61,69 @@ function offsetMs(ts: number, tz: string): number {
   return Date.UTC(w.y, w.m - 1, w.d, w.h, w.mi, w.s) - Math.floor(ts / 1000) * 1000;
 }
 
-/** "2026-08-21 06:30" read as wall-clock time in `tz` -> the real instant. */
+// Zone abbreviations brokers append to timestamps ("03/02/2026 09:35:12 EST").
+const ZONE_ABBR: Record<string, string> = {
+  ET: 'America/New_York',
+  EST: 'America/New_York',
+  EDT: 'America/New_York',
+  CT: 'America/Chicago',
+  CST: 'America/Chicago',
+  CDT: 'America/Chicago',
+  MT: 'America/Denver',
+  MST: 'America/Denver',
+  MDT: 'America/Denver',
+  PT: 'America/Los_Angeles',
+  PST: 'America/Los_Angeles',
+  PDT: 'America/Los_Angeles',
+  UTC: 'UTC',
+  GMT: 'UTC',
+};
+
+/**
+ * A broker timestamp read as wall-clock time in `tz` -> the real instant.
+ * Accepts "2026-08-21 06:30", "2026-08-21, 06:30:00", "20260821;063000",
+ * "8/21/2026 6:30:00 AM", "8/21/26 06:30". A trailing zone ("EDT") or UTC offset
+ * ("-04:00", "Z") overrides `tz`. Slashed dates are month first unless that can't be.
+ */
 export function zonedTimeToUtc(text: string, tz: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(text.trim());
-  if (!m) return null;
-  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
+  let t = text.trim();
+  let offset: number | null = null;
+  const off = /(?:\s*(Z)|\s*([+-])(\d{2}):?(\d{2}))$/.exec(t);
+  if (off && /\d:\d{2}(:\d{2})?(\.\d+)?$/.test(t.slice(0, off.index))) {
+    offset = off[1] ? 0 : (off[2] === '-' ? -1 : 1) * (+off[3] * 60 + +off[4]);
+    t = t.slice(0, off.index);
+  } else {
+    const abbr = /\s+([A-Z]{2,4})$/.exec(t);
+    if (abbr && ZONE_ABBR[abbr[1]]) {
+      tz = ZONE_ABBR[abbr[1]];
+      t = t.slice(0, abbr.index);
+    }
+  }
+
+  let y: number, mo: number, d: number, rest: string;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T,]+|$)(.*)$/.exec(t);
+  if (m) {
+    [y, mo, d, rest] = [+m[1], +m[2], +m[3], m[4]];
+  } else if ((m = /^(\d{4})(\d{2})(\d{2})[;\s]+(\d{2})(\d{2})(\d{2})?$/.exec(t))) {
+    [y, mo, d, rest] = [+m[1], +m[2], +m[3], `${m[4]}:${m[5]}:${m[6] ?? '00'}`];
+  } else if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:[ T,]+|$)(.*)$/.exec(t))) {
+    [mo, d, y, rest] = [+m[1], +m[2], +m[3], m[4]];
+    if (mo > 12) [mo, d] = [d, mo];
+    if (y < 100) y += 2000;
+  } else {
+    return null;
+  }
+
+  const tm = /^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*([AaPp][Mm])?$/.exec(rest.trim());
+  if (!tm || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  let h = +tm[1];
+  if (tm[4]) {
+    const pm = tm[4].toLowerCase() === 'pm';
+    if (h === 12) h = pm ? 12 : 0;
+    else if (pm) h += 12;
+  }
+  const guess = Date.UTC(y, mo - 1, d, h, +tm[2], tm[3] ? +tm[3] : 0);
+  if (offset !== null) return new Date(guess - offset * 60_000);
   // Two passes settle the offset around DST changes.
   let ts = guess - offsetMs(guess, tz);
   ts = guess - offsetMs(ts, tz);
