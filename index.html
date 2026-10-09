@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TradePilot: Free Trade Analyzer</title>
+    <title>MyTradePilot: Free Trade Analyzer</title>
     <meta name="description" content="Find out which of your trades actually make money. Free, and your trades never leave your computer." />
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
   <body>
-    <nav class="brand"><span class="logo" aria-hidden="true">◆</span> TradePilot</nav>
+    <nav class="brand"><span class="logo" aria-hidden="true">◆</span> MyTradePilot</nav>
     <header class="hero">
       <p class="eyebrow">Free trade analyzer</p>
       <h1>Find out which of your trades actually make money.</h1>
@@ -46,6 +46,23 @@
 
       <p id="status" class="status" role="status"></p>
       <div id="report"></div>
+
+      <section class="panel signup" id="signup" hidden>
+        <div>
+          <h2>Get your edge checked before every trade</h2>
+          <p>
+            The full MyTradePilot app is coming: a pre-trade check that tells you if a setup matches where you make money,
+            live alerts for your best setups, and an AI review of your week. Join the waitlist for early access and founding-member pricing.
+          </p>
+        </div>
+        <form novalidate>
+          <label for="signup-email" class="sr-only">Email address</label>
+          <input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com" />
+          <button type="submit">Join the waitlist</button>
+        </form>
+        <p class="signup-msg" role="status"></p>
+        <p class="muted small">We only get your email address, never your trades. Unsubscribe anytime.</p>
+      </section>
     </main>
 
     <footer>

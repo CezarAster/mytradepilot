@@ -2,6 +2,7 @@ import { analyze, type Dimension, type Insight, type Report } from '../core/anal
 import { insightSentence, money, pct } from '../core/format.ts';
 import { combineTrades, parseFile } from '../core/parsers/index.ts';
 import type { Trade } from '../core/types.ts';
+import { setupSignup } from './signup.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const tzSelect = $<HTMLSelectElement>('tz');
@@ -10,6 +11,7 @@ const fileInput = $<HTMLInputElement>('files');
 const drop = $<HTMLLabelElement>('drop');
 const statusEl = $<HTMLParagraphElement>('status');
 const reportEl = $<HTMLDivElement>('report');
+setupSignup($('signup'));
 
 const ZONES = [
   ['America/New_York', 'New York (ET)'],

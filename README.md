@@ -1,4 +1,4 @@
-# TradePilot
+# MyTradePilot
 
 Free trade analyzer: drop in a trade export and see where you make money, where you give it back, and what your stop is doing. Everything runs in the browser; trades are never uploaded.
 
@@ -21,6 +21,10 @@ npm run build      # static site in dist/, deployable anywhere (Netlify, Vercel,
 - `src/core/analyze.ts` tags each trade (New York entry time, trade # of the day, what came before, hold time) and finds edges, leaks and weak spots. Small groups are shrunk toward the overall average so 3 lucky trades aren't called an edge.
 - `src/web/` is the page.
 - `public/sample-trades.csv` holds fictional fills for the "Try it with sample trades" button (`python scripts/make-sample.py` regenerates it).
+
+## Waitlist signup
+
+The signup box under the report is hidden until an email provider is set in `src/web/signup.ts` (Buttondown username or Kit form ID). Only the email address is sent.
 
 ## Deploy
 
