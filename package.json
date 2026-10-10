@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Find which of your trades actually make money. Runs entirely in the browser.",
+  "description": "MyTradePilot: free trade analyzer plus the Referee, a local app that enforces your own trading rules on your Alpaca account.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "dev:app": "vite --config vite.app.config.ts",
+    "build:app": "vite build --config vite.app.config.ts",
+    "start": "node src/server/main.ts",
+    "referee": "node src/server/main.ts",
+    "mcp": "node src/mcp/main.ts",
     "test": "node --test test/*.test.ts",
     "report": "node src/cli.ts",
     "typecheck": "tsc --noEmit"
@@ -22,5 +27,8 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^12.11.1",
     "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=22.18"
   }
 }

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MyTradePilot Referee</title>
+    <meta name="description" content="The Referee watches your account and enforces your own trading rules." />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#/"><span class="logo" aria-hidden="true">◆</span> MyTradePilot <span class="product">Referee</span></a>
+        <div class="chips">
+          <span id="chip-stream" class="chip" role="status" aria-live="polite" title="Connection to the service and to Alpaca">connecting</span>
+          <span id="chip-enf" class="chip" role="status" aria-live="polite" title="Enforcement mode">enforcement</span>
+        </div>
+        <nav class="nav" aria-label="Pages">
+          <a href="#/" data-route="/">Today</a>
+          <a href="#/rules" data-route="/rules">Rules</a>
+          <a href="#/record" data-route="/record">Record</a>
+          <a href="#/setup" data-route="/setup">Setup</a>
+          <a href="#/settings" data-route="/settings">Settings</a>
+          <a href="#/log" data-route="/log">Log</a>
+          <a href="#/ask" data-route="/ask">Ask Claude</a>
+        </nav>
+      </div>
+    </header>
+    <div id="offline" class="offline" role="alert" hidden></div>
+    <main id="view"></main>
+    <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

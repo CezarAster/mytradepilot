@@ -133,7 +133,7 @@ export type EngineEvent =
   | { type: 'trade_opened'; position: OpenPosition; fill: Fill; declared: boolean }
   | { type: 'trade_added'; position: OpenPosition; fill: Fill }
   | { type: 'trade_reduced'; position: OpenPosition; fill: Fill }
-  | { type: 'trade_closed'; trade: Trade; fill: Fill }
+  | { type: 'trade_closed'; trade: Trade; fill: Fill; refereeClosed: boolean }
   | { type: 'breach'; breach: Breach }
   | { type: 'undeclared_entry'; position: OpenPosition; fill: Fill }
   | { type: 'stop_attached'; symbol: string; orderId: string; price: number | null }
@@ -191,6 +191,8 @@ export interface DayState {
   breaches: number;
   undeclared: number;
   declaredEntries: number;
+  /** The daily loss limit already fired today. */
+  dailyLossBreached: boolean;
 }
 
 export interface LiveSnapshot {

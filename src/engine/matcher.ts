@@ -32,8 +32,9 @@ export interface MatchResult {
   flippedInto: MatchResult | null;
 }
 
-export function tradeKeyFor(symbol: string, direction: 'long' | 'short', entryTime: number, entryQty: number, avgEntry: number): string {
-  return `${symbol}|${new Date(entryTime).toISOString()}|${direction}|${entryQty}|${avgEntry}`;
+/** Stable for the life of the trade: it does not change when the position scales in. */
+export function tradeKeyFor(symbol: string, direction: 'long' | 'short', entryTime: number, firstFillKey: string): string {
+  return `${symbol}|${new Date(entryTime).toISOString()}|${direction}|${firstFillKey}`;
 }
 
 export class Matcher {
@@ -63,7 +64,7 @@ export class Matcher {
       qty: o.position,
       avgEntry,
       entryTime: o.entryTime,
-      tradeKey: tradeKeyFor(symbol, o.direction, o.entryTime, o.entryQty, avgEntry),
+      tradeKey: tradeKeyFor(symbol, o.direction, o.entryTime, o.firstFillKey),
     };
   }
 
@@ -74,7 +75,7 @@ export class Matcher {
     const gross = avgExit === null ? 0 : sign * (avgExit - avgEntry) * o.exitQty;
     const pnl = gross - o.fees;
     return {
-      key: tradeKeyFor(symbol, o.direction, o.entryTime, o.entryQty, avgEntry),
+      key: tradeKeyFor(symbol, o.direction, o.entryTime, o.firstFillKey),
       symbol,
       direction: o.direction,
       entryTime: new Date(o.entryTime),

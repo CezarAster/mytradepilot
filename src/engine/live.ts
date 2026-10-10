@@ -49,6 +49,7 @@ function freshDay(date: string): DayState {
     breaches: 0,
     undeclared: 0,
     declaredEntries: 0,
+    dailyLossBreached: false,
   };
 }
 
@@ -304,7 +305,7 @@ export class LiveEngine {
 
   private onClose(events: EngineEvent[], fill: Fill, trade: Trade): void {
     const p = this.positions.get(fill.symbol);
-    if (p?.refereeClosed) trade.stoppedOut = false;
+    const refereeClosed = p?.refereeClosed ?? false;
     this.positions.delete(fill.symbol);
     this.history.push(trade);
     this.historyDirty = true;
@@ -319,7 +320,7 @@ export class LiveEngine {
         this.cooldownUntil = fill.time + r.cooldownAfterLosses.minutes * 60000;
       }
     }
-    events.push({ type: 'trade_closed', trade, fill });
+    events.push({ type: 'trade_closed', trade, fill, refereeClosed });
   }
 
   private findWorkingStop(p: OpenPosition): OrderSnapshot | null {
@@ -397,6 +398,7 @@ export class LiveEngine {
     const total = this.day.realizedPnl + this.day.unrealizedPnl;
     if (total <= -r.dollars) {
       this.dailyLossBreached = true;
+      this.day.dailyLossBreached = true;
       this.breach(events, now, 'dailyLossLimit', null, null, `Your rule: stop at ${money(-r.dollars)} for the day. You are at ${money(total)} (realized ${money(this.day.realizedPnl)}, open ${money(this.day.unrealizedPnl)}).`, r.action);
       if (r.lockRestOfDay && !this.lock) {
         this.lock = { until: endOfMarketDay(now), reason: 'daily loss limit hit' };
@@ -420,6 +422,21 @@ export class LiveEngine {
     }
     this.checkDailyLoss(events, now);
     return events;
+  }
+
+  /**
+   * Bring back what a replay of fills cannot rebuild: the lock, today's breach count (time-based breaches
+   * such as a missing stop are not re-derived) and whether the daily loss limit already fired.
+   */
+  restore(state: { date: string; lock: { until: number; reason: string } | null; breaches: number; dailyLossBreached: boolean }, now: number): void {
+    this.rollDay(now);
+    if (state.date !== this.day.date) return;
+    if (state.lock && state.lock.until > now) this.lock = { ...state.lock };
+    this.day.breaches = Math.max(this.day.breaches, state.breaches);
+    if (state.dailyLossBreached) {
+      this.dailyLossBreached = true;
+      this.day.dailyLossBreached = true;
+    }
   }
 
   /** Mark a position as closed by the referee so its exit is labelled, not counted as a stop-out. */
