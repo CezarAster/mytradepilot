@@ -269,7 +269,8 @@ details.help li + li { margin-top: 4px; }
 }
 .csv-stream { margin: 0; font: 400 12px/18px var(--font-mono); color: var(--text-2); white-space: pre; }
 .csv-stream .hdr { color: var(--accent); }
-.stage-card { position: absolute; z-index: 2; left: 16px; top: 40px; }
+.stage-card { position: absolute; z-index: 2; left: 16px; top: 40px; pointer-events: none; }
+[hidden] { display: none !important; }
 .dock { position: absolute; left: 16px; right: 16px; bottom: 48px; height: var(--dock-h); z-index: 2; }
 .overlay { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .overlay.is-active { pointer-events: auto; }
@@ -312,7 +313,7 @@ details.help li + li { margin-top: 4px; }
 .conf-chips .chip.solid { color: var(--text); border-color: var(--line-strong); }
 .preflight {
   position: absolute; z-index: 3; left: 50%; top: 50%; width: min(460px, calc(100% - 32px));
-  transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+  transform: translate(-50%, -50%); opacity: 0; pointer-events: none; overflow: hidden;
   background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-1);
   padding: 16px 18px;
 }
@@ -323,12 +324,12 @@ details.help li + li { margin-top: 4px; }
 .pf-row .tick { font-family: var(--font-mono); color: var(--accent); }
 .pf-row .what b { color: var(--text); font-weight: 600; }
 .pf-row .res { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
-.verdict { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-s); font: 500 14px/1.35 var(--font-sans); transform-origin: left center; }
+.verdict { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-s); font: 500 14px/1.35 var(--font-sans); transform-origin: center; }
 .verdict.bad { background: var(--neg-soft); color: var(--neg); }
 .verdict.good { background: var(--pos-soft); color: var(--pos); }
 .pf-foot { margin-top: 10px; font: 500 11px/1.3 var(--font-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .pf-face { display: block; }
-.pf-face[data-face="b"] { position: absolute; inset: 16px 18px; opacity: 0; }
+.pf-face[data-face="b"] { position: absolute; left: 18px; right: 18px; top: 16px; opacity: 0; }
 .beat-ticks { position: absolute; left: 16px; right: 16px; bottom: 10px; z-index: 4; display: flex; gap: 6px; align-items: center; }
 .beat-ticks button {
   flex: 1; height: 28px; background: none; border: 0; padding: 0; cursor: pointer; position: relative;
@@ -337,7 +338,7 @@ details.help li + li { margin-top: 4px; }
 .beat-ticks button i { display: block; height: 3px; border-radius: 2px; background: rgba(243,245,247,.12); overflow: hidden; }
 .beat-ticks button i::after { content: ""; display: block; height: 100%; width: var(--fill, 0%); background: var(--accent); }
 .beat-ticks button.is-active { color: var(--text); }
-.beat-ticks .skip { flex: 0 0 auto; font: 400 10px/1.3 var(--font-mono); color: var(--muted-2); max-width: 150px; }
+.beat-ticks .skip { flex: 0 0 auto; font: 400 10px/1.3 var(--font-mono); color: var(--muted); max-width: 150px; }
 @media (max-width: 899px) {
   .stage-wrap { grid-template-columns: 1fr; grid-template-rows: 55fr 45fr; gap: var(--s-3); padding-block: var(--s-3); }
   .rail { order: 2; background: var(--surface); border-top: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
@@ -366,7 +367,7 @@ details.help li + li { margin-top: 4px; }
   .top5-list li small { display: none; }
   .ov-fills .chip { font-size: 11px; white-space: normal; }
   .preflight { padding: 12px 14px; }
-  .pf-face[data-face="b"] { inset: 12px 14px; }
+  .pf-face[data-face="b"] { left: 14px; right: 14px; top: 12px; }
   .pf-row { font-size: 12.5px; grid-template-columns: 16px 1fr; padding: 5px 0; gap: 4px 8px; }
   .pf-row .res { grid-column: 2; font-size: 11.5px; }
   .pf-rows { margin-top: 8px; gap: 2px; }
@@ -374,7 +375,7 @@ details.help li + li { margin-top: 4px; }
   .pf-foot { display: none; }
   .preflight { top: calc(50% - 18px); }
   .pf-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-  .csv-stream { font-size: 10.5px; line-height: 16px; }
+  .csv-stream { font-size: 10px; line-height: 16px; }
   .beat-ticks .skip { display: none; }
   .stage-card { left: 12px; top: 36px; }
 }
@@ -397,6 +398,7 @@ html:not(.motion) .preflight { position: static; transform: none; opacity: 1; po
 html:not(.motion) .pf-face[data-face="b"] { position: static; opacity: 1; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 html:not(.motion) .beat-ticks { display: none; }
 html:not(.motion) .bar-wrap .fill { width: 65%; }
+@media (max-width: 899px) { html:not(.motion) #stage { aspect-ratio: 4 / 3; } }
 
 /* Bento */
 #breakdowns { background: var(--bg); }
@@ -476,7 +478,8 @@ html.motion .signup-band { animation: pulse 6s ease-in-out infinite; }
 footer { padding: var(--s-7) 0 var(--s-8); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
 footer .foot-grid { display: flex; justify-content: space-between; gap: var(--s-5); flex-wrap: wrap; }
 footer p + p { margin-top: 6px; }
-footer nav a { margin-right: 16px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+footer nav span { white-space: nowrap; }
 
 /* Reveal targets (hidden only when motion is on; JS takes over) */
 html.motion [data-reveal] { opacity: 0; }
@@ -680,7 +683,7 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
 
         <div class="dock">
           <div class="overlay ov-fills" data-beat="1">
-            <span class="chip big"><span class="arrow" id="fills-arrow" hidden>232 rows&nbsp;→&nbsp;</span><b id="fills-counter">232</b>&nbsp;<span id="fills-unit">rows</span></span>
+            <span class="chip big"><span class="arrow" id="fills-arrow" hidden>232 rows&nbsp;→&nbsp;</span><b id="fills-counter">232</b><span id="fills-unit">rows</span></span>
             <span class="chip" id="lumn-chip">LUMN · 6 fills → 1 trade · overnight · −0.89%</span>
           </div>
           <div class="overlay ov-stats" data-beat="2">
@@ -1112,7 +1115,7 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
     var MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
     function mk() { return { x: new Float32Array(N), y: new Float32Array(N), r: new Float32Array(N), a: new Float32Array(N), gl: new Float32Array(N), ring: new Float32Array(N), acc: new Float32Array(N), hol: new Float32Array(N), lbl: new Float32Array(N), cr: new Float32Array(N), cg: new Float32Array(N), cb: new Float32Array(N), curve: {} }; }
     var S0 = mk(), S1 = mk();
-    var preH = 0, streamH = 0;
+    var preH = 0, streamH = 0, pfPad = 0, pfH = { a: 0, b: 0 };
     function resize() {
       var r = cv.getBoundingClientRect();
       W = r.width; H = r.height;
@@ -1127,10 +1130,14 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
         plot.b = (dr.top - br.top) - (phone ? 8 : 12);
         var cr = $('#lumn-chip').getBoundingClientRect();
         chipRect = { x: cr.left - br.left + cr.width / 2, y: cr.top - br.top };
-        var preL = phone ? plot.l : plot.l + 204, preT = phone ? plot.t + 72 : plot.t - 8;
-        streamH = Math.max(60, plot.b - preT);
+        var preL = phone ? 12 : plot.l + 204, preT = phone ? plot.t + 72 : plot.t - 8, preB = phone ? H - 56 : plot.b;
+        streamH = Math.max(60, preB - preT);
         st(clip, 'left', preL + 'px'); st(clip, 'top', preT + 'px'); st(clip, 'width', (plot.r - preL) + 'px'); st(clip, 'height', streamH + 'px');
         preH = pre.scrollHeight;
+        // pre-flight card: natural height of each face, so the card can follow the flip
+        var pcs = getComputedStyle(pf);
+        pfPad = parseFloat(pcs.paddingTop) + parseFloat(pcs.paddingBottom) + parseFloat(pcs.borderTopWidth) + parseFloat(pcs.borderBottomWidth);
+        pfH.a = faceA.offsetHeight; pfH.b = faceB.offsetHeight;
       } else {
         plot.b = H - (phone ? 20 : 28);
       }
@@ -1220,7 +1227,7 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
       ctx.font = '500 ' + size + 'px ' + MONO;
       var tw = ctx.measureText(text).width, bw = tw + 10, bh = size + 8;
       var bx = align === 'right' ? x - tw - 5 : align === 'center' ? x - tw / 2 - 5 : x - 5;
-      bx = clamp(bx, 4, W - bw - 4); y = clamp(y, plot.t + bh / 2, H - bh / 2 - 4);
+      bx = clamp(bx, 4, W - bw - 4); y = clamp(y, plot.t + bh / 2, Math.min(H - bh / 2 - 4, plot.b + 6 - bh / 2));
       for (var tries = 0; tries < 4; tries++) {
         var hit = false;
         for (var k = 0; k < placed.length; k++) { var q = placed[k]; if (bx < q.x + q.w && bx + bw > q.x && y - bh / 2 < q.y + q.h && y + bh / 2 > q.y) { hit = true; break; } }
@@ -1346,10 +1353,13 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
       var tt = b === 6 ? t : 0;
       st(faceA, 'opacity', (1 - clamp((tt - 0.58) / 0.06)).toFixed(3));
       st(faceB, 'opacity', clamp((tt - 0.62) / 0.06).toFixed(3));
+      // the card follows the shorter face B so it never shows an empty bottom after the flip
+      var flip = easeInOut(clamp((tt - 0.56) / 0.12));
+      st(pf, 'height', pfH.a && pfH.b ? (lerp(pfH.a, pfH.b, flip) + pfPad).toFixed(1) + 'px' : '');
       rowsA.forEach(function (el, k) { var f = easeOut(clamp((tt - (0.15 + k * 0.07)) / 0.08)); st(el, 'opacity', f.toFixed(3)); st(el, 'transform', 'translateX(' + (-6 * (1 - f)).toFixed(1) + 'px)'); });
-      var vA = easeOut(clamp((tt - 0.48) / 0.1)); st(verA, 'opacity', vA.toFixed(3)); st(verA, 'transform', 'scale(' + lerp(1.3, 1, vA).toFixed(3) + ')');
+      var vA = easeOut(clamp((tt - 0.48) / 0.1)); st(verA, 'opacity', vA.toFixed(3)); st(verA, 'transform', 'scale(' + lerp(1.18, 1, vA).toFixed(3) + ')');
       rowsB.forEach(function (el, k) { var f = easeOut(clamp((tt - (0.68 + k * 0.06)) / 0.08)); st(el, 'opacity', f.toFixed(3)); st(el, 'transform', 'translateX(' + (-6 * (1 - f)).toFixed(1) + 'px)'); });
-      var vB = easeOut(clamp((tt - 0.88) / 0.1)); st(verB, 'opacity', vB.toFixed(3)); st(verB, 'transform', 'scale(' + lerp(1.3, 1, vB).toFixed(3) + ')');
+      var vB = easeOut(clamp((tt - 0.88) / 0.1)); st(verB, 'opacity', vB.toFixed(3)); st(verB, 'transform', 'scale(' + lerp(1.18, 1, vB).toFixed(3) + ')');
       box.dataset.layout = b === 0 ? 'csv' : b === 1 ? 'grid' : b === 6 ? 'constellation' : 'curve';
     }
     var lastP = -1;
@@ -1368,6 +1378,8 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
       S1.curve.cf = N; S1.curve.cfA = 1; S1.curve.cfL = 1; S1.curve.endMode = 1;
       for (var k = 0; k < 5; k++) { var i = top5[k]; S1.r[i] = 6; S1.lbl[i] = 1; }
       draw(S1);
+      // final DOM state of the counter (the scrubbed version ends here too)
+      fillsArrow.hidden = false; txt(fillsCounter, String(N)); txt(fillsUnit, 'trades');
     }
     return { render: render, renderStatic: renderStatic, resize: resize, last: function () { return lastP; } };
   })();
@@ -1640,7 +1652,7 @@ ORBX,Buy to cover,352,28.57,2026-03-11 11:23:00,1.0</pre></div>
       bento.init();
       setupRoadmap();
       ScrollTrigger.refresh();
-      document.fonts && document.fonts.ready.then(function () { ScrollTrigger.refresh(); horizon.resize(); });
+      document.fonts && document.fonts.ready.then(function () { ScrollTrigger.refresh(); horizon.resize(); scene.resize(); scene.render(Math.max(0, scene.last())); });
     }
     var booted = false;
     var go = function () { if (booted) return; booted = true; boot(); };
