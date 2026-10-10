@@ -106,6 +106,33 @@ async function waitFor(url, ms) {
       const kills = st.recentActions.filter((a) => /kill switch/i.test(a.detail)).length;
       if (kills !== 1) problems.push(`kill switch produced ${kills} actions, expected 1`);
     } else problems.push('no kill switch button on Today');
+    // Second pass: a scripted trading day against a fake Alpaca (positions, breaches, a flatten, a lock).
+    const scen = spawn(process.execPath, ['test/helpers/ui-scenario.ts'], { cwd: REPO, env: { ...process.env, PORT: String(PORT + 1) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let scenLog = '';
+    scen.stdout.on('data', (d) => (scenLog += d));
+    scen.stderr.on('data', (d) => (scenLog += d));
+    try {
+      await waitFor(`http://127.0.0.1:${PORT + 1}/api/health`, 20000);
+      const t0 = Date.now();
+      while (!/READY/.test(scenLog) && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 200));
+      const base2 = `http://127.0.0.1:${PORT + 1}/`;
+      const expect2 = {
+        '#/': [/MSFT/, /Locked|LOCKED|locked out/i, /closed by the referee|referee/i, /NVDA/, /AMD/, /stop at 410|410\.00/],
+        '#/log': [/flatten/i, /lock/i],
+        '#/record': [/win rate/i, /AAPL|TSLA/],
+      };
+      for (const [route, needles] of Object.entries(expect2)) {
+        await page.goto(base2 + route, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(800);
+        const text = await page.evaluate(() => document.body.innerText);
+        for (const n of needles) if (!n.test(text)) problems.push(`scenario ${route}: missing ${n}`);
+        await page.screenshot({ path: join(__dirname, `scenario-${route.replace(/[#/]/g, '') || 'today'}.png`), fullPage: true });
+      }
+    } finally {
+      scen.kill('SIGINT');
+    }
+    if (/Error|TypeError/.test(scenLog)) problems.push('scenario runner logged an error: ' + scenLog.split('\n').filter((l) => /Error/.test(l)).slice(0, 3).join(' | '));
+
     await browser.close();
   } catch (err) {
     problems.push(`fatal: ${err.message}`);
