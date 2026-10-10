@@ -75,7 +75,7 @@ export class ConfigStore {
   constructor(dir = dataDir()) {
     this.dir = dir;
     this.file = join(dir, 'config.json');
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.current = this.load();
   }
 
