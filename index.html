@@ -5,10 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MyTradePilot: Free Trade Analyzer</title>
     <meta name="description" content="Find out which of your trades actually make money. Free, and your trades never leave your computer." />
+    <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <meta name="theme-color" content="#070b0f" />
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
   <body>
-    <nav class="brand"><span class="logo" aria-hidden="true">◆</span> MyTradePilot</nav>
+    <nav class="brand">
+      <picture>
+        <source srcset="/brand/logo.svg" media="(prefers-color-scheme: dark)" />
+        <img class="logo" src="/brand/logo-light.svg" alt="MyTradePilot" height="28" />
+      </picture>
+    </nav>
     <header class="hero">
       <p class="eyebrow">Free trade analyzer</p>
       <h1>Find out which of your trades actually make money.</h1>

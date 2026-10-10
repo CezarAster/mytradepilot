@@ -70,12 +70,17 @@ footer {
   max-width: 1040px;
   margin: 0 auto;
   padding: 20px 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   font-size: 18px;
   letter-spacing: -0.01em;
 }
 .brand .logo {
-  color: var(--accent);
+  display: block;
+  height: 28px;
+  width: auto;
 }
 .hero {
   padding-top: 40px;
