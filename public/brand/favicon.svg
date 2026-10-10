@@ -1,11 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyTradePilot">
-  <defs>
-    <linearGradient id="mtp-g" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8ae8ff"/>
-      <stop offset="1" stop-color="#2e9fd1"/>
-    </linearGradient>
-  </defs>
-  <rect x="12.5" y="12.5" width="39" height="39" rx="4" transform="rotate(45 32 32)" fill="url(#mtp-g)"/>
-  <path d="M14 41 L23.5 31.5 L29.5 37.5 L45.75 18.25" fill="none" stroke="#07131c" stroke-width="5.25" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="45.75" cy="18.25" r="4.5" fill="#ffffff" stroke="#07131c" stroke-width="2.75"/>
+  <defs><clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath></defs>
+  <circle cx="32" cy="32" r="27" fill="#0e1f2a"/>
+  <path d="M-10 46 C6 45 12 37 20 36 C26 35 27 41 33 39 C42 36 50 26 74 20 L74 -10 L-10 -10 Z" fill="#6fe3ff" clip-path="url(#mtp-clip)"/>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="#6fe3ff" stroke-width="2.2" opacity="0.6"/>
+  <circle cx="32" cy="34" r="4" fill="#ffffff"/>
 </svg>

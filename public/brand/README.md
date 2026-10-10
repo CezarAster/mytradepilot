@@ -1,22 +1,31 @@
 # MyTradePilot brand assets
 
-The mark is the site's accent diamond with an equity curve running through it:
-one drawdown, then a climb to the "current equity" dot sitting on the diamond's edge.
-All SVGs are self-contained (the wordmark is outlined from Inter SemiBold, no font needed).
+**The mark is an attitude indicator**, the pilot's artificial horizon, with one change:
+the horizon is an equity curve. One drawdown, then the climb. The white bars and dot are
+the aircraft reference, fixed while the horizon moves beneath it. Cyan sky, dark ground,
+a thin bezel ring.
+
+**The wordmark** is Inter Display SemiBold. The dot of the "i" in Pilot is the glowing
+"you are here" node from the equity chart. An editorial variant uses Instrument Serif, the
+headline face.
+
+All SVGs are self-contained (text is outlined, no fonts needed).
 
 | File | Use |
 | --- | --- |
-| `logo.svg` | Lockup (mark + wordmark) on dark backgrounds |
-| `logo-light.svg` | Lockup on light backgrounds |
-| `logo-mono-dark.svg` / `logo-mono-light.svg` | One-colour lockups (white / ink) for print and embossing |
+| `logo.svg` / `logo-light.svg` | Primary lockup on dark / light backgrounds |
+| `logo-serif.svg` / `logo-serif-light.svg` | Editorial lockup (Instrument Serif) |
+| `logo-mono-light.svg` / `logo-mono-dark.svg` | One-colour lockups: cream for dark surfaces, ink for light |
+| `wordmark*.svg` | Wordmark alone, same variants |
 | `logo-mark.svg` | Mark alone, any background |
-| `logo-mark-mono.svg` | One-colour mark; set `color` to recolour |
-| `favicon.svg` | Mark with heavier strokes for 16–32 px |
-| `app-icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` | Full-bleed app icons on the site's dark navy |
-| `logo-1200.png`, `logo-mark-512.png` | Raster exports for places that can't take SVG |
+| `logo-mark-mono-light.svg` / `-dark.svg` | One-colour mark |
+| `favicon.svg` | Mark simplified for 16 to 32 px (aircraft bars dropped, dot kept) |
+| `app-icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` | Full-bleed app icons on the site background |
+| `logo-1600.png`, `logo-light-1600.png`, `logo-mark-512.png` | Raster exports |
 
-Colours: cyan `#8ae8ff → #2e9fd1`, ink `#07131c`, tile navy `#0b1218`.
-Keep clear space of at least half the mark's height around the lockup, and don't put the
-colour mark on cyan or on mid-blue backgrounds; use a mono variant there.
+Colours: accent `#6fe3ff`, ground `#0e1f2a`, background `#070b0f`, cream `#f1ece3`, ink `#0d1820`.
+Keep clear space of at least half the mark's height around the lockup. On cyan or mid-blue
+surfaces use a mono variant.
 
-Regenerate with `python3 scripts/make-logo.py public/brand` (needs `fonttools`, `uharfbuzz`, and Inter installed).
+Regenerate with `python3 scripts/make-logo.py public/brand` (needs `fonttools` and `uharfbuzz`,
+Inter installed; Instrument Serif is fetched on first run).

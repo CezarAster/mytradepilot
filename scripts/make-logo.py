@@ -1,129 +1,161 @@
-"""Generate the MyTradePilot logo set.
+"""Generate the MyTradePilot logo set into public/brand.
 
-Mark: a cyan diamond (the site's existing accent ◆) with an equity curve
-running through it, ending in the "current equity" dot from the chart.
-Wordmark: "MyTradePilot" outlined from Inter SemiBold so the SVG needs no font.
+The mark is an attitude indicator (the pilot's artificial horizon) whose
+horizon is an equity curve: one drawdown, then the climb. The white bars and
+dot are the aircraft reference, fixed while the horizon moves. The wordmark
+is Inter Display SemiBold (editorial variant: Instrument Serif) with the dot
+of the "i" in Pilot replaced by the glowing "you are here" node from the chart.
+
+Usage: python3 scripts/make-logo.py public/brand
+Needs: pip install fonttools uharfbuzz; Inter installed system-wide.
+Instrument Serif is downloaded to ~/.cache/mytradepilot-fonts if missing.
 """
-import os, sys
+import os, sys, math, urllib.request
 import uharfbuzz as hb
 from fontTools.ttLib import TTFont
+from fontTools.pens.recordingPen import RecordingPen
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
 
-OUT = sys.argv[1]
-FONT = "/usr/share/fonts/opentype/inter/Inter-SemiBold.otf"
+OUT = sys.argv[1] if len(sys.argv) > 1 else "public/brand"
+SANS = "/usr/share/fonts/opentype/inter/InterDisplay-SemiBold.otf"
+SERIF_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/instrumentserif/InstrumentSerif-Regular.ttf"
+SERIF = os.path.expanduser("~/.cache/mytradepilot-fonts/InstrumentSerif-Regular.ttf")
 
-CYAN_HI = "#8ae8ff"
-CYAN = "#5cc8ef"
-CYAN_LO = "#2e9fd1"
-NAVY = "#07131c"     # ink on the tile
-INK_LIGHT = "#0f1a24"  # wordmark on light backgrounds
+ACC = "#6fe3ff"      # site accent
+BG = "#070b0f"       # site background
+GROUND = "#0e1f2a"   # instrument ground
+CREAM = "#f1ece3"    # wordmark on dark
+INK = "#0d1820"      # wordmark on light
 
-# ---------- mark ----------
-# 64x64 viewBox. Diamond = rounded square rotated 45°, vertices ~ 4px from edge.
-# Rises across the diamond with one drawdown; the dot (current equity) sits on the NE edge.
-RIVER = "M14 41 L23.5 31.5 L29.5 37.5 L45.75 18.25"
-DOT = (45.75, 18.25)
+def ensure_serif():
+    if not os.path.exists(SERIF):
+        os.makedirs(os.path.dirname(SERIF), exist_ok=True)
+        urllib.request.urlretrieve(SERIF_URL, SERIF)
 
-def mark_body(variant="solid", scale_stroke=1.0):
-    """Inner elements of the mark (no <svg> wrapper). variant: solid | mono | tile"""
-    sw = 4.2 * scale_stroke
-    if variant == "solid":
-        return f"""
+# ---------------------------------------------------------------- geometry
+def seg_path(segs):
+    d = f"M{segs[0][0][0]} {segs[0][0][1]}"
+    for p0, p1, p2, p3 in segs:
+        d += f" C{p1[0]} {p1[1]} {p2[0]} {p2[1]} {p3[0]} {p3[1]}"
+    return d
+
+# The horizon: enters low on the left, a gentle swell, a drawdown, then the climb.
+HORIZON = [((-10, 46), (6, 45), (12, 37), (20, 36)),
+           ((20, 36), (26, 35), (27, 41), (33, 39)),
+           ((33, 39), (42, 36), (50, 26), (74, 20))]
+
+def mark(aircraft=True, ring=True, mono=None):
+    """Inner SVG of the mark in a 64x64 box. mono: a single colour for one-colour use."""
+    if mono:
+        # one colour: the aircraft reference is knocked out of the sky with a mask
+        return f'''
   <defs>
-    <linearGradient id="mtp-g" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="{CYAN_HI}"/>
-      <stop offset="1" stop-color="{CYAN_LO}"/>
-    </linearGradient>
+    <clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath>
+    <mask id="mtp-ac"><rect width="64" height="64" fill="#fff"/>
+      <path d="M17 34 H25 M39 34 H47" stroke="#000" stroke-width="3.2" stroke-linecap="round"/><circle cx="32" cy="34" r="3.2" fill="#000"/></mask>
   </defs>
-  <rect x="12.5" y="12.5" width="39" height="39" rx="4" transform="rotate(45 32 32)" fill="url(#mtp-g)"/>
-  <path d="{RIVER}" fill="none" stroke="{NAVY}" stroke-width="{sw}" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="{DOT[0]}" cy="{DOT[1]}" r="{3.6*scale_stroke}" fill="#ffffff" stroke="{NAVY}" stroke-width="{2.2*scale_stroke}"/>"""
-    if variant == "mono":
-        # single colour (currentColor): outlined diamond, line, dot
-        return f"""
-  <rect x="12.5" y="12.5" width="39" height="39" rx="4" transform="rotate(45 32 32)" fill="none" stroke="currentColor" stroke-width="{3.2*scale_stroke}"/>
-  <path d="{RIVER}" fill="none" stroke="currentColor" stroke-width="{3.6*scale_stroke}" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="{DOT[0]}" cy="{DOT[1]}" r="{3.8*scale_stroke}" fill="currentColor"/>"""
-    raise ValueError(variant)
+  <circle cx="32" cy="32" r="28" fill="none" stroke="{mono}" stroke-width="2.4"/>
+  <g mask="url(#mtp-ac)"><path d="{seg_path(HORIZON)} L74 -10 L-10 -10 Z" fill="{mono}" clip-path="url(#mtp-clip)"/></g>
+  <g clip-path="url(#mtp-clip)"><path d="M39 34 H47" stroke="{mono}" stroke-width="3.2" stroke-linecap="round"/></g>'''
+    b = f'''
+  <defs><clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath></defs>
+  <circle cx="32" cy="32" r="27" fill="{GROUND}"/>
+  <path d="{seg_path(HORIZON)} L74 -10 L-10 -10 Z" fill="{ACC}" clip-path="url(#mtp-clip)"/>'''
+    if ring:
+        b += f'\n  <circle cx="32" cy="32" r="29" fill="none" stroke="{ACC}" stroke-width="2.2" opacity="0.6"/>'
+    if aircraft:
+        b += f'''
+  <path d="M17 34 H25 M39 34 H47" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="32" cy="34" r="3.2" fill="#ffffff"/>'''
+    else:
+        b += '\n  <circle cx="32" cy="34" r="4" fill="#ffffff"/>'
+    return b
 
-def svg(w, h, body, viewbox="0 0 64 64", extra_attrs="", title="MyTradePilot"):
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{viewbox}" width="{w}" height="{h}" '
-            f'role="img" aria-label="{title}"{extra_attrs}>{body}\n</svg>\n')
+def svg(body, vb="0 0 64 64", w=64, h=64, label="MyTradePilot"):
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="{w}" height="{h}" '
+            f'role="img" aria-label="{label}">{body}\n</svg>\n')
 
-# ---------- wordmark ----------
-def outline_text(text, font_path, size, tracking_em=-0.02):
-    """Return (path_d, advance_width, ascender, cap_height, descender) at given px size."""
-    blob = hb.Blob.from_file_path(font_path)
-    face = hb.Face(blob)
-    font = hb.Font(face)
-    upem = face.upem
-    buf = hb.Buffer()
-    buf.add_str(text)
-    buf.guess_segment_properties()
-    hb.shape(font, buf, {"kern": True, "liga": True, "calt": True})
-    tt = TTFont(font_path)
-    gs = tt.getGlyphSet()
-    order = tt.getGlyphOrder()
-    k = size / upem
-    tracking = tracking_em * size
+# ---------------------------------------------------------------- wordmark
+def _pts(contour):
+    out = []
+    for op, args in contour:
+        if op in ("closePath", "endPath"):
+            continue
+        out += [a for a in args if a is not None]
+    return out
+
+def wordmark(font_path, cap, tracking_em, node_fill=ACC, core="#ffffff", glow=True):
+    """Outline 'MyTradePilot' at the given cap height; the i-dot of Pilot becomes the node."""
+    text = "MyTradePilot"
+    blob = hb.Blob.from_file_path(font_path); face = hb.Face(blob); font = hb.Font(face)
+    tt = TTFont(font_path); gs = tt.getGlyphSet(); order = tt.getGlyphOrder()
+    k = cap / tt["OS/2"].sCapHeight
+    tracking = tracking_em * face.upem * k
+    buf = hb.Buffer(); buf.add_str(text); buf.guess_segment_properties()
+    hb.shape(font, buf, {"kern": True, "liga": True})
     pen = SVGPathPen(gs, ntos=lambda v: f"{v:.2f}")
-    x = 0.0
+    x = 0.0; node = None; i_cluster = text.rindex("i")
     for info, pos in zip(buf.glyph_infos, buf.glyph_positions):
         name = order[info.codepoint]
-        tp = TransformPen(pen, (k, 0, 0, -k, x + pos.x_offset * k, -pos.y_offset * k))
-        gs[name].draw(tp)
+        T = (k, 0, 0, -k, x + pos.x_offset * k, -pos.y_offset * k)
+        if info.cluster == i_cluster:
+            rec = RecordingPen(); gs[name].draw(rec)
+            contours, cur = [], []
+            for op, args in rec.value:
+                cur.append((op, args))
+                if op in ("closePath", "endPath"):
+                    contours.append(cur); cur = []
+            dot = max(contours, key=lambda c: min(p[1] for p in _pts(c)))
+            px = [p[0] for p in _pts(dot)]; py = [p[1] for p in _pts(dot)]
+            cx, cy, w = (min(px) + max(px)) / 2, (min(py) + max(py)) / 2, max(px) - min(px)
+            node = (T[4] + cx * k, -cy * k, w * k)
+            tp = TransformPen(pen, T)
+            for c in contours:
+                if c is not dot:
+                    for op, args in c:
+                        getattr(tp, op)(*args)
+        else:
+            gs[name].draw(TransformPen(pen, T))
         x += pos.x_advance * k + tracking
-    x -= tracking
-    os2 = tt["OS/2"]
-    return pen.getCommands(), x, os2.sTypoAscender * k, os2.sCapHeight * k, os2.sTypoDescender * k
+    nx, ny, w = node; r = w * 0.78
+    extra = f'<circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r*2.1:.2f}" fill="{node_fill}" opacity="0.18"/>' if glow else ""
+    extra += f'<circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r:.2f}" fill="{node_fill}"/><circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r*0.42:.2f}" fill="{core}"/>'
+    return pen.getCommands(), x - tracking, extra
 
-CAP = 22.0  # cap height of wordmark in lockup units
-d, adv, asc, cap, desc = outline_text("MyTradePilot", FONT, size=1.0)
-k = CAP / cap
-d, adv, asc, cap, desc = outline_text("MyTradePilot", FONT, size=k)
+FONTS = {"sans": (SANS, 0.62, -0.03), "serif": (SERIF, 0.70, 0.0)}
 
-MARK_H = 32.0          # mark size in lockup
-GAP = 9.0
-PAD = 2.0
-# baseline so caps are vertically centred on the mark
-baseline = PAD + MARK_H / 2 + cap / 2
-text_x = PAD + MARK_H + GAP
-W = text_x + adv + PAD
-H = MARK_H + 2 * PAD
-# descender of "y" and "p" hangs below; keep height = mark height, it fits visually.
+def lockup(fill, font="sans", mark_body=None, mark_h=32, gap=10, node_fill=ACC, core="#ffffff", glow=True):
+    path, cap, tr = FONTS[font]
+    d, adv, extra = wordmark(path, cap * mark_h, tr, node_fill, core, glow)
+    tx = mark_h + gap if mark_body else 0
+    base = mark_h / 2 + cap * mark_h / 2
+    W, H = tx + adv + 2, mark_h
+    body = f'\n  <g transform="scale({mark_h/64:.5f})">{mark_body}\n  </g>' if mark_body else ""
+    body += f'\n  <g transform="translate({tx:.2f} {base:.2f})"><path fill="{fill}" d="{d}"/>{extra}</g>'
+    return svg(body, vb=f"0 0 {W:.2f} {H:.2f}", w=f"{W:.0f}", h=f"{H:.0f}")
 
-def lockup(text_fill, mark_variant="solid", mark_color=None):
-    mark = mark_body(mark_variant)
-    g_attrs = f' color="{mark_color}"' if mark_color else ""
-    body = f"""
-  <g transform="translate({PAD} {PAD}) scale({MARK_H/64:.5f})"{g_attrs}>{mark}
-  </g>
-  <path transform="translate({text_x:.2f} {baseline:.2f})" fill="{text_fill}" d="{d}"/>"""
-    return svg(f"{W:.0f}", f"{H:.0f}", body, viewbox=f"0 0 {W:.2f} {H:.2f}")
-
-files = {}
-# 1. mark only, full colour (any background)
-files["logo-mark.svg"] = svg(64, 64, mark_body("solid"))
-# 2. mark, single colour via currentColor (default cyan)
-files["logo-mark-mono.svg"] = svg(64, 64, mark_body("mono"), extra_attrs=f' color="{CYAN}"')
-# 3. favicon: same mark, slightly heavier strokes so it survives 16px
-files["favicon.svg"] = svg(64, 64, mark_body("solid", scale_stroke=1.25))
-# 4. lockups
-files["logo.svg"] = lockup("#ffffff")                  # on dark
-files["logo-light.svg"] = lockup(INK_LIGHT)            # on light
-files["logo-mono-dark.svg"] = lockup("#ffffff", "mono", "#ffffff")   # one colour, white
-files["logo-mono-light.svg"] = lockup(INK_LIGHT, "mono", INK_LIGHT)  # one colour, ink
-# 5. app icon: full-bleed dark tile with the mark (iOS/Android round the corners themselves)
-app_body = f"""
-  <rect width="64" height="64" fill="#0b1218"/>
-  <g transform="translate(6 6) scale(0.8125)">{mark_body("solid")}
-  </g>"""
-files["app-icon.svg"] = svg(64, 64, app_body)
-
+# ---------------------------------------------------------------- files
+ensure_serif()
+files = {
+    "logo-mark.svg": svg(mark()),
+    "logo-mark-mono-light.svg": svg(mark(mono=CREAM)),
+    "logo-mark-mono-dark.svg": svg(mark(mono=INK)),
+    "favicon.svg": svg(mark(aircraft=False)),
+    "logo.svg": lockup(CREAM, "sans", mark()),
+    "logo-light.svg": lockup(INK, "sans", mark()),
+    "logo-serif.svg": lockup(CREAM, "serif", mark()),
+    "logo-serif-light.svg": lockup(INK, "serif", mark()),
+    "wordmark.svg": lockup(CREAM, "sans"),
+    "wordmark-light.svg": lockup(INK, "sans"),
+    "wordmark-serif.svg": lockup(CREAM, "serif"),
+    "wordmark-serif-light.svg": lockup(INK, "serif"),
+    "logo-mono-light.svg": lockup(CREAM, "sans", mark(mono=CREAM), node_fill=CREAM, core=BG, glow=False),
+    "logo-mono-dark.svg": lockup(INK, "sans", mark(mono=INK), node_fill=INK, core="#ffffff", glow=False),
+    "app-icon.svg": svg(f'\n  <rect width="64" height="64" fill="{BG}"/>\n  <g transform="translate(7 7) scale(0.78125)">{mark()}\n  </g>'),
+}
 os.makedirs(OUT, exist_ok=True)
 for name, content in files.items():
     with open(os.path.join(OUT, name), "w") as f:
         f.write(content)
-    print(name, len(content), "bytes")
-print(f"lockup {W:.1f}x{H:.1f}, text_x={text_x:.1f}, baseline={baseline:.1f}, cap={cap:.1f}")
+print(f"wrote {len(files)} files to {OUT}")
