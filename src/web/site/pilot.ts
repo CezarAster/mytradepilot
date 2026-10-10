@@ -1,5 +1,6 @@
-// The pilot marker (build spec 6.2): leaves the curve end, sits in the +37.3% counter, rides the sticky story frame,
-// becomes the verdict dot and lands in the waitlist button. Anchor rects are read per frame; no pins anywhere.
+// The pilot marker (build spec 6.2; content spec 3): leaves the curve end, sits in the +37.3% counter, rides the sticky
+// story frame, becomes the dot on the flatten row (the Referee's act) and lands in the waitlist button.
+// Anchor rects are read per frame; no pins anywhere.
 import { $, clamp, type Mounted, type PilotHandle, type SiteCtx } from './motion.ts';
 
 interface Stop {
@@ -54,8 +55,8 @@ class Pilot {
     const stops: Stop[] = [
       { el: e.hero, arrive: 0, leave: vh * 0.1 },
       { el: e.numbers, arrive: kNum, leave: kNum + 180 },
-      { el: e.frame, arrive: storyTop + span * 0.1, leave: storyTop + span * 0.72 },
-      { el: e.story, arrive: storyTop + span * 0.9, leave: storyTop + span + vh * 0.3 },
+      { el: e.frame, arrive: storyTop + span * 0.1, leave: storyTop + span * 0.6 },
+      { el: e.story, arrive: storyTop + span * 0.88, leave: storyTop + span + vh * 0.3 },
       { el: e.waitlist, arrive: Math.min(docC(e.waitlist) - vh * 0.5, maxS - 2), leave: Infinity },
     ];
     let last = -1e9;

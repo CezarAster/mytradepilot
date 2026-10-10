@@ -10,10 +10,15 @@ declare global {
 
 const html = document.documentElement;
 
+/** Everything a module animates with inline styles; cleared when motion fails so nothing stays invisible (build notes). */
+export const FALLBACK_SELECTORS =
+  '[data-reveal],[data-hero],[data-split],.pf-row,.pf-row .tick,.pf-stamp,.pf-face,.pf-say,.milestone,#declaration,#decl-slot,#decl-stage,' +
+  '#story-card,#story-rule,#story-held,#story-held .held-row,#story-held .held-status,#story-held .held-link,#story-push,#story-clock,#story-chips .chip,.lane,#story-csv';
+
 function revealAllFallback(): void {
   html.classList.remove('motion');
   html.classList.remove('pilot-on');
-  document.querySelectorAll<HTMLElement>('[data-reveal],[data-hero],[data-split],.pf-row,.pf-row .tick,.pf-verdict,.pf-face,.milestone,#preflight-roadmap,#pf-slot,#pf-stage').forEach((el) => {
+  document.querySelectorAll<HTMLElement>(FALLBACK_SELECTORS).forEach((el) => {
     el.style.opacity = '';
     el.style.visibility = '';
     el.style.transform = '';
@@ -30,7 +35,8 @@ const SECTIONS: Section[] = [
   { selector: '#story', load: () => import('./story.ts') },
   { selector: '#features', load: () => import('./tiles.ts') },
   { selector: '#shrink-lab', load: () => import('./labs.ts') },
-  { selector: '#roadmap', load: () => import('./preflight.ts') },
+  { selector: '#rulebook', load: () => import('./declaration.ts') },
+  { selector: '#roadmap', load: () => import('./roadmap.ts') },
 ];
 
 function lazySections(c: SiteCtx): void {

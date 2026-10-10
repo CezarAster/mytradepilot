@@ -2,8 +2,8 @@
 // hands the scroll to Lenis after a pick/drop/demo, animates the rendered stats, and keeps ScrollTrigger fresh.
 import { $, $$, countUp, lenisScrollTo, type Mounted, type SiteCtx } from './motion.ts';
 
-const SAMPLE_LABEL = 'Sample report · 112 fictional trades generated to show what the analyzer finds · computed in this tab';
-const OWN_LABEL = 'Your report · computed in this tab · nothing uploaded';
+const SAMPLE_LABEL = 'Sample record · 112 fictional trades generated to show what the analyzer finds · computed in this tab';
+const OWN_LABEL = 'Your record · computed in this tab · nothing uploaded';
 
 export function mount(ctx: SiteCtx): Mounted {
   const report = $('#report');
@@ -34,7 +34,7 @@ export function mount(ctx: SiteCtx): Mounted {
   const sampleLabel = () => {
     ctx.sample
       .then((d) => {
-        if (label && lastTrigger === 'sample') label.textContent = `Sample report · ${d.report.summary.trades} fictional trades generated to show what the analyzer finds · computed in this tab`;
+        if (label && lastTrigger === 'sample') label.textContent = `Sample record · ${d.report.summary.trades} fictional trades generated to show what the analyzer finds · computed in this tab`;
       })
       .catch(() => {});
     return SAMPLE_LABEL;
@@ -55,6 +55,8 @@ export function mount(ctx: SiteCtx): Mounted {
       $$('.stat .value', report).forEach((v) => countUp(ctx, v, { duration: 0.9, ease: 'power2.out', trigger: false }));
       const insights = $$('.insight', report);
       if (insights.length) g.from(insights, { y: 10, opacity: 0, duration: 0.5, stagger: 0.06, delay: 0.1, ease: 'expo.out', clearProps: 'all' });
+      const drafts = $$('.draft', report);
+      if (drafts.length) g.from(drafts, { y: 10, opacity: 0, duration: 0.5, stagger: 0.08, delay: 0.2, ease: 'expo.out', clearProps: 'all' });
       const pills = $$('.conf', report);
       if (pills.length) g.from(pills, { scale: 1.18, opacity: 0, duration: 0.4, stagger: 0.06, delay: 0.2, ease: 'power3.out', clearProps: 'all' });
       const bars = $$<HTMLElement>('.barcell .bar', report);

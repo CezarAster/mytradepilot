@@ -148,7 +148,7 @@ export function createCtx(reduced: boolean, sample: Promise<SampleData>): SiteCt
     story: null,
   };
 
-  // Window resize: modules re-lay out in registration order (river, story, pre-check), then one refresh.
+  // Window resize: modules re-lay out in registration order (river, story, declaration card), then one refresh.
   window.addEventListener(
     'resize',
     debounce(() => {
@@ -326,7 +326,11 @@ export function revealAll(): void {
     el.style.visibility = '';
     el.style.transform = '';
   });
-  $$('.pf-row,.pf-row .tick,.pf-verdict,.pf-face,.milestone,#preflight-roadmap,#pf-slot,#pf-stage,.stat,.insight,.conf,.barcell .bar,#report-bar,#report-followup').forEach((el) => {
+  $$(
+    '.pf-row,.pf-row .tick,.pf-stamp,.pf-face,.pf-say,.milestone,#declaration,#decl-slot,#decl-stage,' +
+      '#story-held,#story-held .held-row,#story-held .held-status,#story-held .held-link,#story-push,#story-clock,' +
+      '.stat,.insight,.draft,.conf,.barcell .bar,#report-bar,#report-followup',
+  ).forEach((el) => {
     el.style.opacity = '';
     el.style.transform = '';
     el.style.height = '';

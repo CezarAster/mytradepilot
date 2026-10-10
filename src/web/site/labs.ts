@@ -1,8 +1,8 @@
-// The shrink lab (spec 6.4) and the stop lab (spec 6.5). The shrink rule is the pure function in sample.ts,
-// which mirrors analyze.ts; the slider is the source of truth for n.
+// The shrink lab (build spec 6.4; content spec 2.12): the shrink rule is the pure function in sample.ts,
+// which mirrors analyze.ts; the slider is the source of truth for n. The stop check lives in the report now.
 import { pct } from '../../core/format.ts';
 import { $, $$, type Mounted, type SiteCtx } from './motion.ts';
-import { marketingMinus, resolvePath, shrinkAdjusted, shrinkConfidence, shrinkVerdict } from './sample.ts';
+import { marketingMinus, resolvePath, shrinkAdjusted, shrinkCall, shrinkConfidence } from './sample.ts';
 
 const X0 = 40;
 const PER_PCT = 60;
@@ -16,7 +16,7 @@ function shrinkLab(ctx: SiteCtx): () => void {
   const out = $('#shrink-n-out');
   const readout = $('#shrink-readout');
   const badge = $('#shrink-badge');
-  const verdict = $('#shrink-verdict');
+  const callLine = $('#shrink-call');
   const chips = $$<HTMLButtonElement>('#shrink-examples [data-example]');
   const rawDot = $<SVGCircleElement>('#shrink-raw-dot');
   const rawLbl = $<SVGTextElement>('#shrink-raw-lbl');
@@ -26,7 +26,7 @@ function shrinkLab(ctx: SiteCtx): () => void {
   const ticks = $<SVGGElement>('#shrink-ticks');
   const avgG = $<SVGGElement>('#shrink-avg');
   const avgLabel = $('#shrink-avg-label');
-  if (!slider || !readout || !badge || !verdict || !rawDot || !adjDot || !tether) return () => {};
+  if (!slider || !readout || !badge || !callLine || !rawDot || !adjDot || !tether) return () => {};
 
   let overall = 0.33327;
   const state = { n: 3, raw: -1.17, label: '9:45–10:15 ET' };
@@ -67,7 +67,7 @@ function shrinkLab(ctx: SiteCtx): () => void {
     readout.childNodes[0].textContent = `n = ${n} · raw ${fmt(raw)} · adjusted ${fmt(adj)} `;
     badge.textContent = conf;
     badge.className = `pill ${conf === 'too few' ? 'few' : conf === 'early signal' ? 'early' : 'solid'}`;
-    verdict.textContent = `The report would call this: ${shrinkVerdict(n, raw, overall)}.`;
+    callLine.textContent = `The report would call this: ${shrinkCall(n, raw, overall)}.`;
     if (out) out.textContent = String(n);
     const rx = xOf(raw);
     const ax = xOf(adj);
@@ -202,38 +202,11 @@ function shrinkLab(ctx: SiteCtx): () => void {
   };
 }
 
-function stopLab(ctx: SiteCtx): () => void {
-  if (ctx.reduced) return () => {};
-  const section = $('#stop-lab');
-  const none = $('[data-stop-path="none"]');
-  const back1 = $('[data-stop-path="back"][data-seg="1"]');
-  const back2 = $('[data-stop-path="back"][data-seg="2"]');
-  const stay = $('[data-stop-path="stay"]');
-  const lineG = $('#stop-line-g');
-  if (!section || !none || !back1 || !back2 || !stay) return () => {};
-  const g = ctx.gsap;
-  const tl = g.timeline({ paused: true, defaults: { ease: 'none' } });
-  if (lineG) tl.fromTo(lineG, { x: 700, opacity: 0 }, { x: 0, opacity: 1, duration: 0.2 }, 0);
-  tl.to(none, { strokeDashoffset: 0, duration: 0.25 }, 0.2);
-  tl.to(back1, { strokeDashoffset: 0, duration: 0.15 }, 0.45);
-  tl.to(back2, { strokeDashoffset: 0, duration: 0.15 }, 0.6);
-  tl.to(stay, { strokeDashoffset: 0, duration: 0.25 }, 0.75);
-  const st = ctx.ScrollTrigger.create({ trigger: section, start: 'top 70%', end: 'bottom 60%', scrub: 0.5, animation: tl });
-  return () => {
-    st.kill();
-    tl.kill();
-    g.set([none, back1, back2, stay], { strokeDashoffset: 0 });
-    if (lineG) g.set(lineG, { clearProps: 'all' });
-  };
-}
-
 export function mount(ctx: SiteCtx): Mounted {
   const offShrink = shrinkLab(ctx);
-  const offStop = stopLab(ctx);
   return {
     destroy() {
       offShrink();
-      offStop();
     },
   };
 }

@@ -1,6 +1,7 @@
-// Stuck nav, data-action / data-scroll-to delegation, the dock, export tabs, details and tab refresh hooks,
-// the motion toggle, the drop pulse, file-card adoption, the second signup form and magnetic buttons (spec 3.16, 6.8, 8.4).
-import { setupSignup } from '../signup.ts';
+// Stuck nav, data-action / data-scroll-to delegation (pick, demo, help, enforce, copy-rules, copy-invite), the dock,
+// export tabs, details and tab refresh hooks, the motion toggle, the drop pulse, file-card adoption, the second signup
+// form and magnetic buttons (build spec 3.16, 6.8, 8.4; content spec 2.2 and 2.16).
+import { copyText, flashLabel, setupSignup, showInvite } from '../signup.ts';
 import { $, $$, clamp, disable, type Mounted, type SiteCtx } from './motion.ts';
 
 const html = document.documentElement;
@@ -62,7 +63,9 @@ function dock(ctx: SiteCtx): () => void {
   const dockEl = $('#dock');
   const input = $('#input');
   if (!dockEl || !input) return () => {};
-  const blockers = ['#input', '#report-followup', '#roadmap .roadmap-foot', '#signup', '#final'].map((s) => $(s)).filter((el): el is HTMLElement => !!el);
+  const blockers = ['#input', '#report-followup', '#pricing .pricing-cards', '#roadmap .roadmap-foot', '#signup', '#final']
+    .map((s) => $(s) ?? (s.startsWith('#pricing') ? $('#pricing') : null))
+    .filter((el): el is HTMLElement => !!el);
   const intersecting = new Set<Element>();
   let scrolled = false;
   let focused = false;
@@ -158,6 +161,8 @@ function secondSignup(ctx: SiteCtx): () => void {
         const msg = s.querySelector<HTMLElement>('.signup-msg');
         if (form) form.hidden = true;
         if (msg) msg.textContent = "You're on the list.";
+        // The invite block lives only on the band; the mini form just says "You're on the list."
+        if (s === band) showInvite(s);
       });
     ctx.emit('signup:done', source);
   };
@@ -210,6 +215,37 @@ export function mount(ctx: SiteCtx): Mounted {
     ctx.scrollTo(help, -(ctx.navH() + 24), 0.9);
     ctx.refresh();
   };
+  /** The three draft sentences as rendered in the report. */
+  const draftSentences = () => $$('[data-draft-sentence]', $('#drafts') ?? document).map((el) => (el.textContent ?? '').trim()).filter(Boolean);
+  /** "Have the Referee enforce these": the drafts stay in this tab; the band is told how many, the email field gets focus. Nothing is posted. */
+  const enforce = () => {
+    const sentences = draftSentences();
+    try {
+      sessionStorage.setItem('mtp-drafts', JSON.stringify(sentences));
+    } catch {
+      /* storage blocked: the sentences still stay on the page */
+    }
+    const context = $('#signup-context');
+    if (context) {
+      context.textContent = `Joining with ${sentences.length} draft rule${sentences.length === 1 ? '' : 's'}. They stay in this tab; we get your email.`;
+      context.hidden = false;
+    }
+    const band = $('#signup');
+    if (band) ctx.scrollTo(band, -(ctx.navH() + 8));
+    $<HTMLInputElement>('#signup-email')?.focus({ preventScroll: true });
+  };
+  const copyRules = (btn: HTMLElement) => {
+    copyText(draftSentences().join('\n')).then((ok) => {
+      if (ok) flashLabel(btn);
+    });
+  };
+  const copyInvite = (btn: HTMLElement) => {
+    const ta = $<HTMLTextAreaElement>('#signup-invite textarea');
+    if (!ta) return;
+    copyText(ta.value).then((ok) => {
+      if (ok) flashLabel(btn);
+    });
+  };
 
   const onClick = (e: MouseEvent) => {
     const target = e.target as Element | null;
@@ -220,6 +256,9 @@ export function mount(ctx: SiteCtx): Mounted {
       if (kind === 'pick') pick();
       else if (kind === 'demo') demo?.click();
       else if (kind === 'help') openHelp();
+      else if (kind === 'enforce') enforce();
+      else if (kind === 'copy-rules') copyRules(action);
+      else if (kind === 'copy-invite' && !action.dataset.bound) copyInvite(action);
       return;
     }
     const link = target.closest<HTMLAnchorElement>('a[href^="#"]');
