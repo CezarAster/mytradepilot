@@ -13,6 +13,9 @@ const ALIASES: Record<string, string[]> = {
   price: ['price', 'fill price', 'avg price', 'execution price', 'filled price'],
   time: ['time', 'date/time', 'datetime', 'date and time', 'execution time', 'filled time', 'timestamp'],
   fee: ['fee', 'fees', 'commission', 'comm'],
+  // Optional: worst and best unrealized move during the trade, in %, on the closing fill.
+  mae: ['worst %', 'mae %', 'mae', 'adverse excursion %', 'max adverse excursion %'],
+  mfe: ['best %', 'mfe %', 'mfe', 'favorable excursion %', 'max favorable excursion %'],
 };
 
 function findColumns(header: string[]): Record<string, number> | null {
@@ -36,6 +39,8 @@ interface Fill {
   fee: number;
   time: Date;
   rawTime: string;
+  mae: number | null;
+  mfe: number | null;
 }
 
 function readSide(s: string): 1 | -1 | 0 {
@@ -60,7 +65,10 @@ export function parseFillList(rows: string[][], opts: ParseOptions): ParseResult
       return;
     }
     const fee = cols.fee >= 0 ? Math.abs(toNumber(r[cols.fee])) || 0 : 0;
-    fills.push({ symbol: r[cols.symbol].trim().toUpperCase(), signedQty: side * qty, price, fee, time, rawTime: r[cols.time] });
+    const opt = (c: number) => (c >= 0 && Number.isFinite(toNumber(r[c])) ? toNumber(r[c]) : null);
+    const mae = opt(cols.mae);
+    const mfe = opt(cols.mfe);
+    fills.push({ symbol: r[cols.symbol].trim().toUpperCase(), signedQty: side * qty, price, fee, time, rawTime: r[cols.time], mae: mae === null ? null : -Math.abs(mae), mfe: mfe === null ? null : Math.abs(mfe) });
   });
 
   return { format: 'Fill list', trades: buildTrades(fills, opts.fileName, warnings), warnings };
@@ -78,6 +86,8 @@ interface OpenTrade {
   exitValue: number; // sum qty*price of exits
   fees: number;
   fills: number;
+  mae: number | null;
+  mfe: number | null;
 }
 
 export function buildTrades(fills: Fill[], source: string, warnings: string[]): Trade[] {
@@ -97,6 +107,8 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
     exitValue: 0,
     fees: fee,
     fills: 1,
+    mae: f.mae,
+    mfe: f.mfe,
   });
 
   const finish = (symbol: string, t: OpenTrade, exitTime: Date | null): Trade => {
@@ -116,8 +128,8 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
       qty: t.maxQty,
       pnl,
       returnPct: (pnl / (avgEntry * t.maxQty)) * 100,
-      mfePct: null,
-      maePct: null,
+      mfePct: t.mfe,
+      maePct: t.mae,
       stoppedOut: false,
       fills: t.fills,
       source,
@@ -131,6 +143,11 @@ export function buildTrades(fills: Fill[], source: string, warnings: string[]): 
       continue;
     }
     const sameWay = Math.sign(f.signedQty) === Math.sign(cur.position);
+    const note = (c: OpenTrade, x: Fill) => {
+      if (x.mae !== null) c.mae = c.mae === null ? x.mae : Math.min(c.mae, x.mae);
+      if (x.mfe !== null) c.mfe = c.mfe === null ? x.mfe : Math.max(c.mfe, x.mfe);
+    };
+    note(cur, f);
     if (sameWay) {
       cur.position += f.signedQty;
       cur.entryQty += Math.abs(f.signedQty);
