@@ -709,7 +709,7 @@ html.motion .story-steps .step.active { opacity: 1; }
 }
 /* no motion (reduced, the footer switch, or a failed boot): the frame grows so the packed lanes and the two-face card both fit */
 html:not(.motion) .story-frame { height: auto; }
-html:not(.motion) .frame-stage { min-height: 700px; }
+html:not(.motion) .frame-stage { min-height: 820px; }
 @media (max-width: 768px) {
-  html:not(.motion) .frame-stage { min-height: 560px; }
+  html:not(.motion) .frame-stage { min-height: 720px; }
 }
