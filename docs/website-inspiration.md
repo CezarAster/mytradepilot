@@ -76,9 +76,62 @@ Galleries to browse for more
 8. **Broker and platform logo wall.** Even with only TradingView plus generic CSV support, a "works with" strip helps.
 9. **Pricing page from day one,** even if the only plan is free plus waitlist. Competitors range from $29 to $80 a month or $149 to $299 one-time, which frames "free" well.
 
-## 6. Open questions for the design step
+## 6. Heavy animation: references and techniques
+
+Requirement added after the first pass: the site should feel heavily animated, with scroll-triggered text reveals as a baseline and bigger set-pieces on top. This section lists the sites that do it best, the specific effects worth stealing, and the libraries that make them practical.
+
+### 6.1 Sites that do animation well in finance and crypto
+
+| Site | What the animation is | Why it works | Source |
+|---|---|---|---|
+| [Stripe](https://stripe.com) | WebGL mesh-gradient ribbons behind the hero headline, built with Next.js, three.js and Framer Motion. The gradient pauses when scrolled out of view and holds still under reduced-motion settings. | The motion sits behind the message, never on top of it. The classic example of "impressive but calm". Note the cost: about 2.1 MB in the first eight seconds of load, per a third-party measurement. | [Colorlib](https://colorlib.com/wp/animation-websites/), [Kevin Hufnagl breakdown](https://kevinhufnagl.com/how-to-stripe-website-gradient-effect/), [gist reconstruction](https://gist.github.com/jordienr/64bcf75f8b08641f205bd6a1a0d4ce1d) |
+| [Wealthsimple](https://www.wealthsimple.com) | A coin object that follows the visitor down the page and gathers at the final savings section, ending at the "Start Investing" CTA. Awwwards tags the hero as 3D with a scroll interaction. | One persistent object tying the whole scroll together is a stronger story than many unrelated effects. | [DesignRush review](https://www.designrush.com/best-designs/websites/wealthsimple), [Awwwards listing](https://www.awwwards.com/inspiration/stocks-crypto-landing-pages-wealthsimple-1) |
+| [Cash App design site](https://design.cash.app) | Awwwards Site of the Day. Infinite-canvas expressive scroll; images sit in a sticky frame and scale as hidden trigger sections pass. | The "sticky frame with content that changes as you scroll" pattern is reusable for a trade report that fills in as you scroll. | [Toimi roundup](https://toimi.pro/blog/best-fintech-website-designs/), [Framer University tutorial](https://framer.university/blog/top-7-scroll-animations-in-framer-(just-copy-them)) |
+| [Dragonfly Redux](https://www.awwwards.com/inspiration_search/crypto%20currency/) by Studio Freight | Awwwards Site of the Day, July 2026. Studio Freight are the authors of Lenis, the smooth-scroll library most of these sites use. | Current state of the art for crypto-adjacent scroll work. Open it before designing anything. | [Awwwards crypto search](https://www.awwwards.com/inspiration_search/crypto%20currency/) |
+| [Native](https://www.awwwards.com/inspiration_search/crypto%20currency/) by MIDNIGHT | Awwwards Site of the Day, June 2025, crypto category. | Same reason. | same |
+| [Revolut](https://www.revolut.com) | Near-black hero, one white Aeonik Pro headline, restrained premium motion rather than neon loudness. | Proof that "heavy" does not have to mean "loud". | [WebDesignHot spec](https://www.webdesignhot.com/api/design-md/revolut.md) |
+| [Robinhood](https://robinhood.com) | Technical, chart-inspired illustration that animates; a 47-second rebrand film with 3D motion. | Shows the brand's own motion language. The FANCY hero concept on Contra (April 2026) is an unofficial but useful take on a minimal layout with 3D motion. | [Prolific Studio](https://prolificstudio.co/fintech-projects/), [Contra concept](https://contra.com/p/UYg2RPbR-robinhood-hero-section-concept) |
+| [Coinbase "System Update"](https://buck.co/work/coinbase-system-update) by BUCK | 2025 anthem film built from grayscale animation turned into procedural code (Houdini, C4D, Cavalry, After Effects). | Reference for a hero video or Lottie sequence if the site uses one. | [BUCK case study](https://buck.co/work/coinbase-system-update) |
+
+Galleries to browse for more: [Awwwards scroll animations](https://www.awwwards.com/inspiration/scroll-animations), [Awwwards RGB split on scroll](https://www.awwwards.com/inspiration/rgb-split-effect-on-scroll), [School of Motion: 10 sites with great animation 2026](https://www.schoolofmotion.com/blog/10-websites-with-great-animation-in-2026), [HTMLBurger: 20 animated websites](https://htmlburger.com/blog/animated-websites/), [Kombai hero scrub example](https://kombai.com/gallery/inspirations/hero_scrub_glen/), [Utsubo: Gaussian splatting landing pages](https://www.utsubo.com/blog/gaussian-splatting-landing-page), [Utsubo: storytelling sites guide](https://www.utsubo.com/blog/immersive-storytelling-websites-guide).
+
+### 6.2 The effects, from baseline to set-piece
+
+1. **Text reveal on scroll** (the one you described). Headline split into lines or words, each line wrapped in an overflow-hidden mask, sliding up and fading in with a stagger as it enters the viewport. Variants: per-character for the hero only, per-line everywhere else; "read-along" where words light up in sequence as you scroll; SVG outline-to-fill. Walkthroughs: [Osmo masked text reveal](https://www.osmo.supply/resource/masked-text-reveal), [Good Fella Lab SplitText guide](https://lab.good-fella.com/blog/gsap-text-animation-splittext-guide), [FreeFrontend SplitText demos](https://freefrontend.com/split-text-js/).
+2. **Smooth scroll** with Lenis so every scroll-linked effect feels buttery. One animation loop only: drive Lenis from the GSAP ticker and update ScrollTrigger on Lenis scroll events.
+3. **Animated counters and chart draw-on.** Stats count up when they enter view; the equity curve draws itself with a stroke-dashoffset or clip-path; P&L bars grow from zero. Pure CSS scroll-driven animations handle the draw-on; the count-up needs a few lines of JS. [MDN scroll-driven animations](https://developer.mozilla.org/docs/Web/CSS/CSS_scroll-driven_animations), [Flavio Copes guide](https://flaviocopes.com/css-scroll-driven-animations.md).
+4. **Pinned, scrubbed product demo.** A section stays stuck for 300 to 800vh while scroll progress drives a frame sequence on a canvas or steps through the report (drop CSV, trades appear, edges highlight, leaks flagged, stop analysis). Text panels fade in at set progress ranges. [Scrollytelling guide](https://theplusaddons.com/blog/scrollytelling/), [Kombai hero scrub](https://kombai.com/gallery/inspirations/hero_scrub_glen/), [Framer image scroll scrub](https://www.framer.com/marketplace/components/image-scroll-scrub).
+5. **Sticky frame, changing content** (Cash App pattern). One frame holds position; what is inside it swaps or scales as triggers pass.
+6. **Hero background.** Options in rising order of cost: animated CSS gradient; Stripe-style WebGL mesh gradient; a live-drawing candlestick or equity curve in canvas; a three.js scene. A chart that actually draws from your sample data would be the most on-brand.
+7. **Bento grid tiles with live micro-animations.** Each feature tile loops a small animation of its own feature (a bar flipping green, a stop line moving) rather than a static screenshot. See the Linear and Raycast pattern in section 4.
+8. **Page transitions and preloader.** Logo preloader and view transitions are common on Awwwards winners but add weight; decide late.
+9. **Persistent 3D object** (Wealthsimple coin pattern) that travels through the page and lands on the CTA. Highest effort, highest payoff.
+
+### 6.3 Libraries
+
+| Library | Use it for | Notes |
+|---|---|---|
+| [GSAP](https://gsap.com) + ScrollTrigger + SplitText + ScrollSmoother | Everything scroll-linked, text splitting, pinning, scrubbing | Free for commercial use including all former Club plugins since the Webflow acquisition (confirm on gsap.com). Install from the public npm package. The default choice for a plain Vite site like this one. [FreeFrontend ScrollTrigger demos](https://freefrontend.com/scroll-trigger-js/), [GSAP Vault 123 examples](https://gsapvault.com/blog/gsap-animation-examples) |
+| [Lenis](https://lenis.darkroom.engineering) | Smooth scroll | By Studio Freight / darkroom.engineering. Pair with GSAP as in 6.2 point 2. Do not set a scrollerProxy when using Lenis. |
+| [Motion](https://motion.dev/docs/text-animation) (formerly Framer Motion) | Same effects in React | Only if the site moves to React. `whileInView` with `viewport={{ once: true }}` plus `stagger` covers the text reveal. |
+| CSS scroll-driven animations | Lightweight draw-on and reveals with zero JS | Chromium is solid; check Safari and Firefox support on caniuse before relying on it, and add a `@supports` fallback. |
+| three.js or WebGL | Hero backgrounds, 3D objects | Heaviest option. Stripe's gradient is the reference for doing it tastefully. |
+| Lottie | Short vector animations in tiles | Fine for icons and small loops; not for scroll-linked work. |
+
+### 6.4 Rules so heavy animation stays impressive instead of annoying
+
+- Motion behind the message (Stripe), never covering the CTA or the report.
+- Reveal-once for text (`once: true`); scrub only the pinned set-pieces.
+- Respect `prefers-reduced-motion`: everything must read correctly with animation off.
+- Cap device pixel ratio at 2 for canvas work and redraw only when progress changes.
+- Budget the page: Stripe's roughly 2 MB hero is the ceiling, not the target. Lazy-load the WebGL and frame sequences below the fold.
+- Keep the analyzer itself instant. The animation sells the product; the drop zone and report must never wait on it.
+
+## 7. Open questions for the design step
 
 - Light-first (Tradervue, TradesViz) or dark-first (Linear, TradingView default, most templates)?
 - Lead the hero with the live analyzer, or with a static shot and the analyzer below?
 - What honest proof number exists today? If none, lead with the privacy claim and a sample report.
 - Tone: serious professional (Public, Edgewonk) or friendly consumer (Robinhood)? The waitlist copy ("Get your edge checked before every trade") leans professional.
+- Animation set-pieces: which of the 6.2 list are must-haves for launch? Text reveals, counters and chart draw-on are cheap; a pinned scrubbed demo and a WebGL hero are each a multi-day effort.
+- Plain Vite with GSAP (fits the current repo) or a move to React with Motion?
