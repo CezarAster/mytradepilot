@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyTradePilot">
+  <circle cx="32" cy="32" r="30" fill="#0b1c28"/>
+  <path d="M7 44 C14 44 17 30 23 29 C29 28 30 40 36 39 C42 38 46 22 53 18" fill="none" stroke="#6fe3ff" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="53.5" cy="17.5" r="6" fill="#6fe3ff"/><circle cx="53.5" cy="17.5" r="2.6" fill="#ffffff"/>
+</svg>

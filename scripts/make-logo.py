@@ -1,8 +1,8 @@
 """Generate the MyTradePilot logo set into public/brand.
 
-The mark is an attitude indicator (the pilot's artificial horizon) whose
-horizon is an equity curve: one drawdown, then the climb. The white bars and
-dot are the aircraft reference, fixed while the horizon moves. The wordmark
+The mark is a night-flight porthole: a dark glass orb with the equity river
+running across it, one drawdown then the climb, ending in the glowing
+"you are here" node that lights the glass from the top right. The wordmark
 is Inter Display SemiBold (editorial variant: Instrument Serif) with the dot
 of the "i" in Pilot replaced by the glowing "you are here" node from the chart.
 
@@ -40,37 +40,48 @@ def seg_path(segs):
         d += f" C{p1[0]} {p1[1]} {p2[0]} {p2[1]} {p3[0]} {p3[1]}"
     return d
 
-# The horizon: enters low on the left, a gentle swell, a drawdown, then the climb.
-HORIZON = [((-10, 46), (6, 45), (12, 37), (20, 36)),
-           ((20, 36), (26, 35), (27, 41), (33, 39)),
-           ((33, 39), (42, 36), (50, 26), (74, 20))]
+# The river: a run-up, one drawdown, then the climb to the node.
+RIVER = [((7, 44), (14, 44), (17, 30), (23, 29)),
+         ((23, 29), (29, 28), (30, 40), (36, 39)),
+         ((36, 39), (42, 38), (46, 22), (53, 18))]
+NODE = (53.5, 17.5)
 
-def mark(aircraft=True, ring=True, mono=None):
-    """Inner SVG of the mark in a 64x64 box. mono: a single colour for one-colour use."""
+def mark(flat=False, mono=None):
+    """Inner SVG of the mark in a 64x64 box.
+
+    A dark glass orb, the night-flight porthole, with the equity river running
+    across it and the glowing "you are here" node lighting the glass from the
+    top right. flat=True drops filters and gradients (favicons, tiny sizes).
+    mono: one colour for single-colour use.
+    """
+    d = seg_path(RIVER); nx, ny = NODE
     if mono:
-        # one colour: the aircraft reference is knocked out of the sky with a mask
         return f'''
+  <circle cx="32" cy="32" r="29" fill="none" stroke="{mono}" stroke-width="2.6"/>
+  <path d="{d}" fill="none" stroke="{mono}" stroke-width="3.4" stroke-linecap="round"/>
+  <circle cx="{nx}" cy="{ny}" r="5.6" fill="{mono}"/>'''
+    if flat:
+        return f'''
+  <circle cx="32" cy="32" r="30" fill="#0b1c28"/>
+  <path d="{d}" fill="none" stroke="{ACC}" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="{nx}" cy="{ny}" r="6" fill="{ACC}"/><circle cx="{nx}" cy="{ny}" r="2.6" fill="#ffffff"/>'''
+    return f'''
   <defs>
-    <clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath>
-    <mask id="mtp-ac"><rect width="64" height="64" fill="#fff"/>
-      <path d="M17 34 H25 M39 34 H47" stroke="#000" stroke-width="3.2" stroke-linecap="round"/><circle cx="32" cy="34" r="3.2" fill="#000"/></mask>
+    <radialGradient id="mtp-glass" cx="{nx}" cy="{ny}" r="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17445c"/><stop offset="0.45" stop-color="#0c2231"/><stop offset="1" stop-color="#050d14"/>
+    </radialGradient>
+    <linearGradient id="mtp-rim" x1="54" y1="10" x2="14" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="{ACC}" stop-opacity="0.7"/><stop offset="0.5" stop-color="{ACC}" stop-opacity="0.12"/><stop offset="1" stop-color="{ACC}" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="mtp-bloom" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.6"/></filter>
+    <filter id="mtp-haze" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.2"/></filter>
   </defs>
-  <circle cx="32" cy="32" r="28" fill="none" stroke="{mono}" stroke-width="2.4"/>
-  <g mask="url(#mtp-ac)"><path d="{seg_path(HORIZON)} L74 -10 L-10 -10 Z" fill="{mono}" clip-path="url(#mtp-clip)"/></g>
-  <g clip-path="url(#mtp-clip)"><path d="M39 34 H47" stroke="{mono}" stroke-width="3.2" stroke-linecap="round"/></g>'''
-    b = f'''
-  <defs><clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath></defs>
-  <circle cx="32" cy="32" r="27" fill="{GROUND}"/>
-  <path d="{seg_path(HORIZON)} L74 -10 L-10 -10 Z" fill="{ACC}" clip-path="url(#mtp-clip)"/>'''
-    if ring:
-        b += f'\n  <circle cx="32" cy="32" r="29" fill="none" stroke="{ACC}" stroke-width="2.2" opacity="0.6"/>'
-    if aircraft:
-        b += f'''
-  <path d="M17 34 H25 M39 34 H47" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
-  <circle cx="32" cy="34" r="3.2" fill="#ffffff"/>'''
-    else:
-        b += '\n  <circle cx="32" cy="34" r="4" fill="#ffffff"/>'
-    return b
+  <circle cx="32" cy="32" r="30" fill="url(#mtp-glass)"/>
+  <circle cx="32" cy="32" r="29.2" fill="none" stroke="url(#mtp-rim)" stroke-width="1.4"/>
+  <path d="{d}" fill="none" stroke="{ACC}" stroke-width="6.5" stroke-linecap="round" opacity="0.28" filter="url(#mtp-haze)"/>
+  <path d="{d}" fill="none" stroke="{ACC}" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="{nx}" cy="{ny}" r="11" fill="{ACC}" opacity="0.5" filter="url(#mtp-bloom)"/>
+  <circle cx="{nx}" cy="{ny}" r="4.6" fill="{ACC}"/><circle cx="{nx}" cy="{ny}" r="2" fill="#ffffff"/>'''
 
 def svg(body, vb="0 0 64 64", w=64, h=64, label="MyTradePilot"):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="{w}" height="{h}" '
@@ -119,7 +130,7 @@ def wordmark(font_path, cap, tracking_em, node_fill=ACC, core="#ffffff", glow=Tr
             gs[name].draw(TransformPen(pen, T))
         x += pos.x_advance * k + tracking
     nx, ny, w = node; r = w * 0.78
-    extra = f'<circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r*2.1:.2f}" fill="{node_fill}" opacity="0.18"/>' if glow else ""
+    extra = f'<circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r*2.0:.2f}" fill="{node_fill}" opacity="0.32" filter="url(#mtp-wbloom)"/>' if glow else ""
     extra += f'<circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r:.2f}" fill="{node_fill}"/><circle cx="{nx:.2f}" cy="{ny:.2f}" r="{r*0.42:.2f}" fill="{core}"/>'
     return pen.getCommands(), x - tracking, extra
 
@@ -132,6 +143,7 @@ def lockup(fill, font="sans", mark_body=None, mark_h=32, gap=10, node_fill=ACC, 
     base = mark_h / 2 + cap * mark_h / 2
     W, H = tx + adv + 2, mark_h
     body = f'\n  <g transform="scale({mark_h/64:.5f})">{mark_body}\n  </g>' if mark_body else ""
+    body += f'\n  <defs><filter id="mtp-wbloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="{cap*mark_h*0.03:.2f}"/></filter></defs>'
     body += f'\n  <g transform="translate({tx:.2f} {base:.2f})"><path fill="{fill}" d="{d}"/>{extra}</g>'
     return svg(body, vb=f"0 0 {W:.2f} {H:.2f}", w=f"{W:.0f}", h=f"{H:.0f}")
 
@@ -139,9 +151,10 @@ def lockup(fill, font="sans", mark_body=None, mark_h=32, gap=10, node_fill=ACC, 
 ensure_serif()
 files = {
     "logo-mark.svg": svg(mark()),
+    "logo-mark-flat.svg": svg(mark(flat=True)),
     "logo-mark-mono-light.svg": svg(mark(mono=CREAM)),
     "logo-mark-mono-dark.svg": svg(mark(mono=INK)),
-    "favicon.svg": svg(mark(aircraft=False)),
+    "favicon.svg": svg(mark(flat=True)),
     "logo.svg": lockup(CREAM, "sans", mark()),
     "logo-light.svg": lockup(INK, "sans", mark()),
     "logo-serif.svg": lockup(CREAM, "serif", mark()),
@@ -152,7 +165,7 @@ files = {
     "wordmark-serif-light.svg": lockup(INK, "serif"),
     "logo-mono-light.svg": lockup(CREAM, "sans", mark(mono=CREAM), node_fill=CREAM, core=BG, glow=False),
     "logo-mono-dark.svg": lockup(INK, "sans", mark(mono=INK), node_fill=INK, core="#ffffff", glow=False),
-    "app-icon.svg": svg(f'\n  <rect width="64" height="64" fill="{BG}"/>\n  <g transform="translate(7 7) scale(0.78125)">{mark()}\n  </g>'),
+    "app-icon.svg": svg(f'\n  <rect width="64" height="64" fill="{BG}"/>\n  <g transform="translate(5 5) scale(0.84375)">{mark()}\n  </g>'),
 }
 os.makedirs(OUT, exist_ok=True)
 for name, content in files.items():

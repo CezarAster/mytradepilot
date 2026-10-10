@@ -1,10 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyTradePilot">
-  <defs>
-    <clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath>
-    <mask id="mtp-ac"><rect width="64" height="64" fill="#fff"/>
-      <path d="M17 34 H25 M39 34 H47" stroke="#000" stroke-width="3.2" stroke-linecap="round"/><circle cx="32" cy="34" r="3.2" fill="#000"/></mask>
-  </defs>
-  <circle cx="32" cy="32" r="28" fill="none" stroke="#0d1820" stroke-width="2.4"/>
-  <g mask="url(#mtp-ac)"><path d="M-10 46 C6 45 12 37 20 36 C26 35 27 41 33 39 C42 36 50 26 74 20 L74 -10 L-10 -10 Z" fill="#0d1820" clip-path="url(#mtp-clip)"/></g>
-  <g clip-path="url(#mtp-clip)"><path d="M39 34 H47" stroke="#0d1820" stroke-width="3.2" stroke-linecap="round"/></g>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="#0d1820" stroke-width="2.6"/>
+  <path d="M7 44 C14 44 17 30 23 29 C29 28 30 40 36 39 C42 38 46 22 53 18" fill="none" stroke="#0d1820" stroke-width="3.4" stroke-linecap="round"/>
+  <circle cx="53.5" cy="17.5" r="5.6" fill="#0d1820"/>
 </svg>

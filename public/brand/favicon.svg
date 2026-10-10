@@ -1,7 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyTradePilot">
-  <defs><clipPath id="mtp-clip"><circle cx="32" cy="32" r="27"/></clipPath></defs>
-  <circle cx="32" cy="32" r="27" fill="#0e1f2a"/>
-  <path d="M-10 46 C6 45 12 37 20 36 C26 35 27 41 33 39 C42 36 50 26 74 20 L74 -10 L-10 -10 Z" fill="#6fe3ff" clip-path="url(#mtp-clip)"/>
-  <circle cx="32" cy="32" r="29" fill="none" stroke="#6fe3ff" stroke-width="2.2" opacity="0.6"/>
-  <circle cx="32" cy="34" r="4" fill="#ffffff"/>
+  <circle cx="32" cy="32" r="30" fill="#0b1c28"/>
+  <path d="M7 44 C14 44 17 30 23 29 C29 28 30 40 36 39 C42 38 46 22 53 18" fill="none" stroke="#6fe3ff" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="53.5" cy="17.5" r="6" fill="#6fe3ff"/><circle cx="53.5" cy="17.5" r="2.6" fill="#ffffff"/>
 </svg>
