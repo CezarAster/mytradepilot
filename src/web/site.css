@@ -90,6 +90,7 @@ button.mchip[aria-pressed="true"], .tab[aria-selected="true"] { border-color: va
 .hero-tooltip.on { opacity: 1; }
 .hero-tooltip.flip { transform: translate(-100%, -100%); }
 .hero-tooltip small { display: block; color: var(--muted); font-weight: 400; }
+.hero-tooltip small.ctx { display: block; font: 500 11px/1.3 var(--font-mono); color: var(--muted); margin-top: 2px; }
 .hero-caption { position: absolute; z-index: 2; left: var(--gutter); bottom: 18px; color: var(--muted-2); margin: 0; }
 .hero-end { position: absolute; left: 0; top: 0; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
 .hero-labels { position: absolute; inset: 0; pointer-events: none; }
