@@ -249,6 +249,42 @@ function maxDrawdown(closed: Trade[]): number {
   return dd;
 }
 
+/** A closed trade with the context the engine tags it with, plus the bucket label it falls into per dimension. */
+export interface TaggedTrade {
+  trade: Trade;
+  date: string;
+  minutes: number;
+  weekday: string;
+  tradeOfDay: number;
+  prev: Ctx['prev'];
+  holdMin: number;
+  overnight: boolean;
+  labels: { time: string; tradeOfDay: string; afterPrev: string; direction: string; hold: string };
+}
+
+/** Tags every closed trade the way `analyze` does, in the engine's (entry) order. Additive; no behaviour change. */
+export function tagTrades(trades: Trade[]): TaggedTrade[] {
+  const closed = trades.filter((t) => t.exitTime !== null);
+  const pick = (buckets: Bucket[], c: Ctx) => buckets.find((b) => b.test(c))?.label ?? '';
+  return withContext(closed).map((c) => ({
+    trade: c.t,
+    date: c.date,
+    minutes: c.minutes,
+    weekday: c.weekday,
+    tradeOfDay: c.tradeOfDay,
+    prev: c.prev,
+    holdMin: c.holdMin,
+    overnight: c.overnight,
+    labels: {
+      time: pick(TIME_BUCKETS, c),
+      tradeOfDay: pick(TRADE_OF_DAY, c),
+      afterPrev: pick(AFTER_PREV, c),
+      direction: pick(DIRECTION, c),
+      hold: pick(HOLD, c),
+    },
+  }));
+}
+
 export function analyze(trades: Trade[], opts: AnalyzeOptions): Report {
   const closed = trades.filter((t) => t.exitTime !== null);
   const ctx = withContext(closed);

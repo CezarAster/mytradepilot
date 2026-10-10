@@ -20,6 +20,7 @@ npm run build      # static site in dist/, deployable anywhere (Netlify, Vercel,
 - `src/core/parsers/index.ts` combines files, drops duplicates from overlapping exports, and merges partial fills.
 - `src/core/analyze.ts` tags each trade (New York entry time, trade # of the day, what came before, hold time) and finds edges, leaks and weak spots. Small groups are shrunk toward the overall average so 3 lucky trades aren't called an edge.
 - `src/web/` is the page.
+- A fills export may carry optional `Worst %` / `Best %` columns on the closing fill (TradingView's `Adverse excursion %` is read automatically); they turn on the stop check.
 - `public/sample-trades.csv` holds fictional fills for the "Try it with sample trades" button (`python scripts/make-sample.py` regenerates it).
 
 ## Waitlist signup
