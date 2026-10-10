@@ -157,6 +157,19 @@ test('engine: stop required within the window, bracket legs count, cancelling re
   assert.deepEqual(breaches(g.tick(at('2026-03-02 10:01:00'))), ['stopRequired']);
 });
 
+test('engine: an exit through the stop order is labelled a stop-out; a referee close is not', () => {
+  const e = new LiveEngine({ rules: rules() });
+  e.applyOrder(stop('AAA', 'sell', 98, '2026-03-02 09:39:50', 'held', 'stopA'));
+  e.applyFill(fill('AAA', 'buy', 10, 100, '2026-03-02 09:40:00'));
+  e.applyOrder(stop('AAA', 'sell', 98, '2026-03-02 09:50:00', 'filled', 'stopA'));
+  const closed = e.applyFill(fill('AAA', 'sell', 10, 98, '2026-03-02 09:50:00', 'stopA')).find((x) => x.type === 'trade_closed');
+  assert.ok(closed && closed.type === 'trade_closed' && closed.trade.stoppedOut === true);
+  e.applyFill(fill('BBB', 'buy', 10, 50, '2026-03-02 10:00:00'));
+  e.markRefereeClosed('BBB');
+  const ref = e.applyFill(fill('BBB', 'sell', 10, 49, '2026-03-02 10:01:00')).find((x) => x.type === 'trade_closed');
+  assert.ok(ref && ref.type === 'trade_closed' && ref.refereeClosed && ref.trade.stoppedOut === false);
+});
+
 test('engine: size, open positions, session window and declarations', () => {
   const e = new LiveEngine({ rules: rules({ stopRequired: { enabled: false }, maxPositionDollars: { dollars: 5000 }, maxOpenPositions: { count: 1 } }) });
   assert.deepEqual(breaches(e.applyFill(fill('AAA', 'buy', 100, 60, '2026-03-02 09:20'))).sort(), ['maxPositionDollars', 'sessionWindow']);

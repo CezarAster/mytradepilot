@@ -73,6 +73,8 @@ export class LiveEngine {
   private noReentrySymbol: string | null = null;
   private pending: Declaration | null = null;
   private orders = new Map<string, OrderSnapshot>();
+  /** Order id -> type, kept after the order is done so a closing fill can be labelled a stop-out. */
+  private orderTypes = new Map<string, OrderSnapshot['type']>();
   private dailyLossBreached = false;
   private lastTodayTrade: Trade | null = null;
   private lastSeen = 0;
@@ -306,6 +308,7 @@ export class LiveEngine {
   private onClose(events: EngineEvent[], fill: Fill, trade: Trade): void {
     const p = this.positions.get(fill.symbol);
     const refereeClosed = p?.refereeClosed ?? false;
+    trade.stoppedOut = !refereeClosed && STOP_TYPES.has(this.orderTypes.get(fill.orderId) ?? 'other');
     this.positions.delete(fill.symbol);
     this.history.push(trade);
     this.historyDirty = true;
@@ -340,6 +343,8 @@ export class LiveEngine {
     const terminal = !WORKING.has(o.status);
     if (terminal) this.orders.delete(o.id);
     else this.orders.set(o.id, o);
+    this.orderTypes.set(o.id, o.type);
+    if (this.orderTypes.size > 5000) this.orderTypes.delete(this.orderTypes.keys().next().value!);
     if (!STOP_TYPES.has(o.type)) return events;
 
     const p = this.positions.get(o.symbol);
