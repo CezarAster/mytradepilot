@@ -125,6 +125,14 @@ export class Store {
       .run(o.id, o.symbol, o.side, o.type, o.status, o.qty, o.stopPrice, o.limitPrice, o.updatedAt, o.parentId);
   }
 
+  /** Orders last seen in a working status, oldest update first: replayed so a rebuild keeps open positions' stops. */
+  workingOrders(statuses: string[]): OrderSnapshot[] {
+    const marks = statuses.map(() => '?').join(',');
+    return this.db
+      .prepare(`SELECT id, symbol, side, type, status, qty, stop_price AS stopPrice, limit_price AS limitPrice, updated_at AS updatedAt, parent_id AS parentId FROM orders WHERE status IN (${marks}) ORDER BY updated_at ASC`)
+      .all(...statuses) as OrderSnapshot[];
+  }
+
   // ---- imports ----
 
   addImport(fileName: string, format: string, timeZone: string, trades: Trade[]): { imported: number; duplicates: number } {

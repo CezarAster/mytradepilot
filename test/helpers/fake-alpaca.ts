@@ -12,6 +12,8 @@ export class FakeAlpaca {
   positions: AlpacaPosition[] = [];
   calls: string[] = [];
   failNext: string | null = null;
+  /** Fail this many close-position calls with a 500. */
+  failClose = 0;
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -33,20 +35,36 @@ export class FakeAlpaca {
         this.positions = [];
         return json(207, []);
       }
+      // Like Alpaca: bracket legs nest under their parent with nested=true; a cancel completes asynchronously
+      // (listed once as pending_cancel); a close is refused while any order on the symbol holds the shares.
+      const flat = (list: AlpacaOrder[]) => list.flatMap((o) => [o, ...(o.legs ?? [])]);
+      const live = (o: AlpacaOrder) => o.status !== 'filled' && o.status !== 'canceled';
       if (url.pathname.startsWith('/v2/positions/') && req.method === 'DELETE') {
         const sym = url.pathname.split('/').pop()!;
+        if (this.failClose > 0) {
+          this.failClose--;
+          return json(500, { message: 'boom' });
+        }
+        if (flat(this.openOrders).some((o) => o.symbol === sym && live(o))) return json(403, { code: 40310000, message: 'insufficient qty available for order' });
         if (!this.positions.some((p) => p.symbol === sym)) return json(404, { message: 'position does not exist' });
         this.positions = this.positions.filter((p) => p.symbol !== sym);
         return json(200, { id: 'close-' + sym, symbol: sym, side: 'sell', status: 'accepted' });
       }
       if (url.pathname === '/v2/orders' && req.method === 'GET') {
         const sym = url.searchParams.get('symbols');
-        return json(200, sym ? this.openOrders.filter((o) => o.symbol === sym) : this.openOrders);
+        const pick = (o: AlpacaOrder) => !sym || o.symbol === sym;
+        json(200, url.searchParams.get('nested') === 'true' ? this.openOrders.filter(pick) : flat(this.openOrders).filter((o) => live(o) && pick(o)));
+        for (const o of flat(this.openOrders)) if (o.status === 'pending_cancel') o.status = 'canceled';
+        this.openOrders = this.openOrders.filter((o) => live(o) || (o.legs ?? []).some(live));
+        return;
       }
       if (url.pathname.startsWith('/v2/orders/') && req.method === 'DELETE') {
         const id = url.pathname.split('/').pop()!;
-        this.openOrders = this.openOrders.filter((o) => o.id !== id);
-        return json(204, null);
+        const o = flat(this.openOrders).find((x) => x.id === id);
+        if (!o || !live(o)) return json(422, { message: 'order is not cancelable' });
+        o.status = 'pending_cancel';
+        res.writeHead(204);
+        return res.end();
       }
       if (url.pathname === '/v2/account/activities/FILL') {
         const after = url.searchParams.get('after');

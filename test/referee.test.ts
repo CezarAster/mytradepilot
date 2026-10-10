@@ -11,7 +11,7 @@ import { RefereeHttp } from '../src/server/http.ts';
 import { Logger } from '../src/server/log.ts';
 import { Referee } from '../src/server/referee.ts';
 import type { ServerEvent, StateResponse } from '../src/server/api.ts';
-import { CREDS as creds, FakeAlpaca, FakeStream, activity, fillUpdate as fillUpdateAt, order as orderAt } from './helpers/fake-alpaca.ts';
+import { CREDS as creds, FakeAlpaca, FakeStream, activity, fillUpdate as fillUpdateAt, order as orderAt, position } from './helpers/fake-alpaca.ts';
 
 let fake: FakeAlpaca;
 let dir: string;
@@ -30,9 +30,10 @@ async function makeReferee(opts: { dryRun?: boolean; enabled?: boolean } = {}) {
     log,
     now,
     timers: false,
-    clientFactory: (c) => new AlpacaClient(c, { tradingHost: `http://127.0.0.1:${fake.port}`, dataHost: `http://127.0.0.1:${fake.port}`, retries: 0 }),
+    clientFactory: (c) => new AlpacaClient(c, { tradingHost: `http://127.0.0.1:${fake.port}`, dataHost: `http://127.0.0.1:${fake.port}`, retries: 0, sleep: () => new Promise((r) => setTimeout(r, 1)) }),
     streamFactory: (_c, handlers) => new FakeStream(handlers) as unknown as TradeStream,
     dbFile: (mode) => join(dir, `test-${mode}.sqlite`),
+    sleep: () => Promise.resolve(),
   });
   const events: ServerEvent[] = [];
   referee.onEvent((e) => events.push(e));
@@ -215,5 +216,79 @@ test('a wrong Alpaca key is reported by the connection test, not thrown', async 
   assert.match(bad.detail, /401/);
   const good = await referee.testConnection();
   assert.equal(good.ok, true);
+  await referee.stop();
+});
+
+const tick = (r: Referee) => (r as unknown as { onTick(): Promise<void> }).onTick();
+const settle = () => new Promise((r) => setTimeout(r, 60));
+
+test('fix: saving settings keeps an open position\'s stop, so the next tick does not flatten it', async () => {
+  clock = Date.parse('2026-10-14T14:00:00Z');
+  const { referee } = await makeReferee();
+  const stream = FakeStream.current!;
+  fake.positions = [position('GGG', 10, 50)];
+  stream.push(fillUpdate('g1', 'GGG', 'buy', 10, 50));
+  clock += 5000;
+  const stopOrder = order('gstop', 'GGG', 'sell', 'stop', 'new', { stop_price: '49' });
+  fake.openOrders = [stopOrder];
+  stream.push({ event: 'new', timestamp: new Date(clock).toISOString(), order: stopOrder });
+  clock += 120000;
+  fake.calls = [];
+  await referee.updateSettings({ stopPct: 1.5 });
+  assert.equal(referee.state().snapshot.positions.find((p) => p.symbol === 'GGG')?.stop?.orderId, 'gstop', 'the rebuilt engine still knows the stop');
+  await tick(referee);
+  await settle();
+  assert.ok(!fake.calls.some((c) => c.startsWith('DELETE') && /GGG|gstop/.test(c)), `GGG untouched: ${fake.calls.join(', ')}`);
+  assert.ok(!referee.state().todayBreaches.some((b) => b.rule === 'stopRequired' && b.symbol === 'GGG'));
+  fake.openOrders = [];
+  fake.positions = [];
+  await referee.stop();
+});
+
+test('fix: a backfilled fill older than a stream fill is replayed in time order, not booked as a phantom trade', async () => {
+  clock = Date.parse('2026-10-15T14:00:00Z');
+  const { referee } = await makeReferee({ dryRun: true });
+  fake.fills.push(activity('h-in', 'HHH', 'buy', 10, 20, clock - 60000)); // the stream missed the entry
+  FakeStream.current!.push(fillUpdate('h-out', 'HHH', 'sell', 10, 21)); // and delivered the exit
+  await referee.reconcile('test');
+  const hhh = referee.state().todayTrades.filter((t) => t.symbol === 'HHH');
+  assert.equal(hhh.length, 1);
+  assert.equal(hhh[0].direction, 'long');
+  assert.equal(hhh[0].pnl, 10);
+  assert.ok(!referee.state().snapshot.positions.some((p) => p.symbol === 'HHH'));
+  await referee.stop();
+});
+
+test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed close, and still enforces a new trade in the same symbol', async () => {
+  clock = Date.parse('2026-10-16T14:00:00Z');
+  const { referee } = await makeReferee();
+  const stream = FakeStream.current!;
+  // 300 x $50 = $15,000 breaks the $10,000 size rule (flatten). The entry carries a stop and a target leg.
+  const legs = [order('kstop', 'KKK', 'sell', 'stop', 'held', { stop_price: '48' }), order('ktp', 'KKK', 'sell', 'limit', 'new', { limit_price: '55' })];
+  const parent = { ...fillUpdate('kp', 'KKK', 'buy', 300, 50).order, order_class: 'bracket', legs };
+  fake.openOrders = [parent];
+  fake.positions = [position('KKK', 300, 50)];
+  fake.failClose = 4; // every in-line attempt fails; the tick loop must take over
+  fake.calls = [];
+  stream.push({ ...fillUpdate('kp', 'KKK', 'buy', 300, 50), order: parent });
+  await settle();
+  assert.ok(fake.calls.includes('DELETE /v2/orders/kstop') && fake.calls.includes('DELETE /v2/orders/ktp'), `legs cancelled: ${fake.calls.join(', ')}`);
+  assert.equal(fake.positions.length, 1, 'still open after four failed closes');
+  assert.ok(referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 5 s/.test(a.detail)));
+  clock += 6000;
+  await tick(referee);
+  assert.equal(fake.positions.length, 0, 'the retry closed it');
+  assert.ok(referee.state().recentActions.some((a) => a.kind === 'flatten' && a.symbol === 'KKK' && /retry/.test(a.detail)));
+
+  // The exit fill arrives, then a new oversized KKK entry two seconds later: it must be closed too.
+  clock += 1000;
+  stream.push(fillUpdate('close-KKK', 'KKK', 'sell', 300, 49.9));
+  clock += 2000;
+  fake.positions = [position('KKK', 300, 50)];
+  const before = fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length;
+  stream.push(fillUpdate('k2', 'KKK', 'buy', 300, 50));
+  await settle();
+  assert.equal(fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length, before + 1, 'second trade flattened');
+  assert.equal(fake.positions.length, 0);
   await referee.stop();
 });

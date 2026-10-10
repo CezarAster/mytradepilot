@@ -32,7 +32,7 @@ export interface EngineOptions {
   stopPct?: number;
 }
 
-const WORKING = new Set(['new', 'accepted', 'held', 'pending_new', 'partially_filled', 'accepted_for_bidding', 'calculated', 'pending_replace']);
+export const WORKING = new Set(['new', 'accepted', 'held', 'pending_new', 'partially_filled', 'accepted_for_bidding', 'calculated', 'pending_replace']);
 const STOP_TYPES = new Set(['stop', 'stop_limit', 'trailing_stop']);
 
 function freshDay(date: string): DayState {

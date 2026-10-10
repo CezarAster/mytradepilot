@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { AlpacaClient } from '../alpaca/client.ts';
 import { fillFromActivity, fillFromUpdate, orderSnapshots } from '../alpaca/convert.ts';
 import { TradeStream, type StreamStatus } from '../alpaca/stream.ts';
-import type { AlpacaCredentials, AlpacaSnapshot, AlpacaTradeUpdate } from '../alpaca/types.ts';
+import type { AlpacaCredentials, AlpacaOrder, AlpacaSnapshot, AlpacaTradeUpdate } from '../alpaca/types.ts';
 import { AlpacaError } from '../alpaca/types.ts';
 import { marketClock } from '../core/time.ts';
 import type { Trade } from '../core/types.ts';
 import { combineTrades, parseFile } from '../core/parsers/index.ts';
 import { isValidTimeZone } from '../core/time.ts';
-import { LiveEngine, fmtTime } from '../engine/live.ts';
+import { LiveEngine, WORKING, fmtTime } from '../engine/live.ts';
 import type { Breach, Declaration, EngineEvent, Fill, LiveSnapshot, RuleSet } from '../engine/types.ts';
 import { checkSetup } from '../strategy/setup.ts';
 import type {
@@ -50,7 +50,19 @@ export interface RefereeDeps {
   /** Test hook: skip timers. */
   timers?: boolean;
   dbFile?: (mode: 'paper' | 'live') => string;
+  sleep?: (ms: number) => Promise<void>;
 }
+
+interface FlattenRetry {
+  symbol: string;
+  tradeKey: string | null;
+  breachId: number | null;
+  rule: string;
+  attempts: number;
+  nextAt: number;
+}
+
+const MAX_FLATTEN_ATTEMPTS = 8;
 
 export class HttpError extends Error {
   readonly status: number;
@@ -80,6 +92,11 @@ export class Referee {
   private lastSync: number | null = null;
   private readonly startedAt: number;
   private lastFlatten = new Map<string, number>();
+  private flattenRetries = new Map<string, FlattenRetry>();
+  /** Newest fill time the engine has consumed; a backfilled fill older than this forces a rebuild in time order. */
+  private lastAppliedFill = 0;
+  private ticking = false;
+  private readonly sleep: (ms: number) => Promise<void>;
   private syncing: Promise<void> | null = null;
   private pendingDeclId: number | null = null;
   private lastMarksAt = 0;
@@ -93,6 +110,7 @@ export class Referee {
     this.log = deps.log;
     this.now = deps.now ?? (() => Date.now());
     this.startedAt = this.now();
+    this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     const cfg = this.config.get();
     this.notifier = new Notifier(this.log, { webhookUrl: cfg.webhookUrl, desktop: cfg.notifications.desktop, fetchImpl: deps.fetchImpl });
     this.log.onLog((level, message, time) => {
@@ -110,7 +128,6 @@ export class Referee {
     this.engine = new LiveEngine({ rules: cfg.rules, declarationWindowMinutes: cfg.declarationWindowMinutes, stopPct: cfg.stopPct });
     this.log.info(`data in ${file}`);
     this.rebuildEngine();
-    this.restoreDayState();
     if (cfg.alpaca) await this.connect(cfg.alpaca);
     else this.log.warn('Alpaca keys are not set. Open Settings in the UI (or export APCA_API_KEY_ID and APCA_API_SECRET_KEY) to connect.');
     if (this.deps.timers !== false) {
@@ -131,11 +148,18 @@ export class Referee {
   private rebuildEngine(): void {
     const cfg = this.config.get();
     const t0 = this.now();
+    const pending = this.engine ? this.engine.snapshot(t0).pendingDeclaration : null;
     this.engine = new LiveEngine({ rules: cfg.rules, declarationWindowMinutes: cfg.declarationWindowMinutes, stopPct: cfg.stopPct });
     const imported = this.store.importedTrades();
     if (imported.length) this.engine.seed(imported, this.now());
     const fills = this.store.allFills();
     for (const f of fills) this.handleEvents(this.engine.applyFill(f), 'history');
+    this.lastAppliedFill = fills.length ? fills[fills.length - 1].time : 0;
+    // Working orders as last seen, so a rebuilt position keeps its stop instead of looking naked to the next tick.
+    for (const o of this.store.workingOrders([...WORKING])) this.handleEvents(this.engine.applyOrder(o), 'history');
+    this.restoreDayState();
+    if (pending) this.engine.declare(pending);
+    else this.pendingDeclId = null;
     this.log.info(`engine rebuilt: ${fills.length} fills, ${imported.length} imported trades, ${this.engine.closedTrades().length} closed trades (${this.now() - t0} ms)`);
   }
 
@@ -213,21 +237,37 @@ export class Referee {
       if (f && !this.store.hasFill(f.key)) fresh.push(f);
     }
     fresh.sort((a, b) => a.time - b.time);
-    for (const f of fresh) {
-      this.store.insertFill(f);
-      const mode: Mode = this.everLive && now - f.time < 5 * 60000 ? 'late' : 'history';
-      this.handleEvents(this.engine.applyFill(f), mode);
+    if (fresh.length && fresh[0].time < this.lastAppliedFill) {
+      // The stream already gave the engine newer fills; applying these now would match them out of order.
+      for (const f of fresh) this.store.insertFill(f);
+      this.log.warn(`backfilled ${fresh.length} fill(s) older than fills already applied (${reason}); rebuilt from history in time order`);
+      this.rebuildEngine();
+    } else {
+      for (const f of fresh) {
+        this.store.insertFill(f);
+        const mode: Mode = this.everLive && now - f.time < 5 * 60000 ? 'late' : 'history';
+        this.handleEvents(this.engine.applyFill(f), mode);
+        this.lastAppliedFill = Math.max(this.lastAppliedFill, f.time);
+      }
+      if (fresh.length) this.log.info(`backfilled ${fresh.length} fill(s) (${reason})`);
     }
-    if (fresh.length) this.log.info(`backfilled ${fresh.length} fill(s) (${reason})`);
 
     // Working orders, so stops placed while we were away count.
     const open = await client.listOrders({ status: 'open', nested: true });
     if (this.stopped) return;
+    const openIds = new Set<string>();
     for (const o of open) {
       for (const snap of orderSnapshots(o)) {
+        openIds.add(snap.id);
         this.store.upsertOrder(snap);
         this.handleEvents(this.engine.applyOrder(snap), 'history');
       }
+    }
+    for (const snap of this.store.workingOrders([...WORKING])) {
+      if (openIds.has(snap.id)) continue;
+      const gone = { ...snap, status: 'canceled', updatedAt: now };
+      this.store.upsertOrder(gone);
+      this.handleEvents(this.engine.applyOrder(gone), 'history');
     }
 
     await this.refreshPositions(client, true);
@@ -270,7 +310,10 @@ export class Referee {
       }
       const fill = fillFromUpdate(u);
       if (fill) {
-        if (this.store.insertFill(fill)) this.handleEvents(this.engine.applyFill(fill), 'live');
+        if (this.store.insertFill(fill)) {
+          this.handleEvents(this.engine.applyFill(fill), 'live');
+          this.lastAppliedFill = Math.max(this.lastAppliedFill, fill.time);
+        }
         else this.log.debug(`duplicate fill ignored ${fill.key}`);
       }
       this.broadcastSnapshot();
@@ -280,26 +323,41 @@ export class Referee {
   }
 
   private async onTick(): Promise<void> {
-    if (this.stopped) return;
+    if (this.stopped || this.ticking) return;
+    this.ticking = true;
+    try {
+      await this.tickOnce();
+    } finally {
+      this.ticking = false;
+    }
+  }
+
+  private async tickOnce(): Promise<void> {
     const now = this.now();
-    this.handleEvents(this.engine.tick(now), 'live');
     const client = this.client;
-    if (!client) return;
-    const open = this.engine.openPositions();
-    // Before declaring "no stop", ask Alpaca directly: a missed order event must not cost the trader a flatten.
-    const awaiting = this.engine.positionsAwaitingStop();
-    if (awaiting.length) {
-      const soon = open.filter((p) => awaiting.includes(p.symbol) && p.stopDeadline !== null && p.stopDeadline - now < 12000);
-      for (const p of soon) {
+    if (client) {
+      // Ask Alpaca before any stop deadline can fire: a missed order event must never cost the trader a flatten.
+      const awaiting = new Set(this.engine.positionsAwaitingStop());
+      for (const p of this.engine.openPositions()) {
+        if (!awaiting.has(p.symbol) || p.stopDeadline === null || p.stopDeadline - now >= 12000) continue;
         try {
           const orders = await client.listOrders({ status: 'open', nested: true, symbols: p.symbol });
-          for (const o of orders) for (const snap of orderSnapshots(o)) this.handleEvents(this.engine.applyOrder(snap), 'live');
+          for (const o of orders) {
+            for (const snap of orderSnapshots(o)) {
+              this.store.upsertOrder(snap);
+              this.handleEvents(this.engine.applyOrder(snap), 'live');
+            }
+          }
         } catch (err) {
-          this.log.warn(`could not check open orders for ${p.symbol}`, err);
+          this.log.warn(`could not check open orders for ${p.symbol}; its stop check waits for Alpaca`, err);
+          return;
         }
       }
-      this.handleEvents(this.engine.tick(this.now()), 'live');
     }
+    this.handleEvents(this.engine.tick(this.now()), 'live');
+    if (!client) return;
+    await this.drainFlattenRetries();
+    const open = this.engine.openPositions();
     const marksEvery = open.length ? 5000 : 30000;
     if (now - this.lastMarksAt >= marksEvery) {
       try {
@@ -329,7 +387,7 @@ export class Referee {
     for (const e of events) {
       switch (e.type) {
         case 'trade_opened':
-          this.store.setTradeMeta(e.position.tradeKey, { tradeOfDay: e.position.tradeOfDay, declared: e.declared });
+          this.store.setTradeMeta(e.position.tradeKey, mode === 'history' ? { tradeOfDay: e.position.tradeOfDay } : { tradeOfDay: e.position.tradeOfDay, declared: e.declared });
           if (e.declared && this.pendingDeclId !== null) {
             this.store.consumeDeclaration(this.pendingDeclId, e.position.tradeKey);
             this.pendingDeclId = null;
@@ -379,7 +437,7 @@ export class Referee {
       else if (enf.dryRun) {
         outcome = `DRY RUN: would have ${b.symbol ? `closed ${b.symbol}` : 'closed every position'}.`;
         this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'dry_run', symbol: b.symbol, breachId: id, detail: outcome, ok: true }) });
-      } else outcome = await this.flatten(b.symbol, id, b.rule);
+      } else outcome = await this.flatten(b.symbol, id, b.rule, b.tradeKey);
     } else if (late) outcome = 'Seen after the fact: not enforced.';
     const sent = await this.notifier.send(`Referee: ${b.rule}${b.symbol ? ` ${b.symbol}` : ''}`, `${b.message} ${outcome}`.trim());
     if (sent.webhook || sent.desktop) {
@@ -389,12 +447,19 @@ export class Referee {
   }
 
   /** Close one symbol (or everything) at market. Reduce-only by construction: Alpaca's close-position endpoint. */
-  private async flatten(symbol: string | null, breachId: number | null, rule: string): Promise<string> {
+  /**
+   * Close one symbol (or everything) at market through Alpaca's close-position endpoint, which can only reduce.
+   * Debounced per trade, so duplicate breaches of one trade send one close while a new trade in the same symbol is
+   * still enforced. A close that fails is retried from the tick loop with backoff, because the symbol's stop has
+   * already been cancelled by then.
+   */
+  private async flatten(symbol: string | null, breachId: number | null, rule: string, tradeKey: string | null = null, retry = false): Promise<string> {
     const client = this.client;
     if (!client) return 'Not connected to Alpaca.';
-    const key = symbol ?? '*';
+    const key = symbol === null ? '*' : (tradeKey ?? symbol);
     const now = this.now();
-    if (now - (this.lastFlatten.get(key) ?? 0) < 10000) return `Already closing ${key} (one flatten per 10 s).`;
+    for (const [k, t] of this.lastFlatten) if (now - t > 60000) this.lastFlatten.delete(k);
+    if (!retry && now - (this.lastFlatten.get(key) ?? 0) < 10000) return `Already closing ${symbol ?? 'everything'}.`;
     this.lastFlatten.set(key, now);
     try {
       let detail: string;
@@ -407,17 +472,56 @@ export class Referee {
         this.engine.markRefereeClosed(symbol);
         const cancelled = await client.cancelOrdersFor(symbol);
         if (cancelled) this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'cancel_orders', symbol, breachId, detail: `Cancelled ${cancelled} open order(s) on ${symbol} before closing.`, ok: true }) });
-        const order = await client.closePosition(symbol);
-        detail = `Closed ${symbol} at market (${rule}); order ${order.id}.`;
+        const order = await this.closeWithRetry(client, symbol);
+        detail = order ? `Closed ${symbol} at market (${rule}${retry ? ', retry' : ''}); order ${order.id}.` : `${symbol} was already flat (${rule}).`;
+        this.flattenRetries.delete(symbol);
         this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'flatten', symbol, breachId, detail, ok: true }) });
       }
       this.log.warn(detail);
       return detail;
     } catch (err) {
-      const msg = err instanceof AlpacaError && (err.status === 404 || err.status === 422) ? `Nothing to close for ${key} (${err.message}).` : `Flatten of ${key} failed: ${(err as Error).message}`;
+      this.lastFlatten.delete(key);
+      let msg = `Flatten of ${symbol ?? 'everything'} failed: ${(err as Error).message}`;
+      if (symbol !== null) {
+        const attempts = (this.flattenRetries.get(symbol)?.attempts ?? 0) + 1;
+        if (attempts <= MAX_FLATTEN_ATTEMPTS) {
+          const wait = Math.min(60000, 5000 * 2 ** (attempts - 1));
+          this.flattenRetries.set(symbol, { symbol, tradeKey, breachId, rule, attempts, nextAt: this.now() + wait });
+          msg += ` Its open orders may already be cancelled, so it may have no stop. Retrying in ${Math.round(wait / 1000)} s (attempt ${attempts} of ${MAX_FLATTEN_ATTEMPTS}).`;
+        } else {
+          this.flattenRetries.delete(symbol);
+          msg += ` Gave up after ${MAX_FLATTEN_ATTEMPTS} attempts. Close ${symbol} yourself and check its stop.`;
+        }
+        void this.notifier.send(`Referee: could not close ${symbol}`, msg);
+      }
       this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'error', symbol, breachId, detail: msg, ok: false }) });
       this.log.error(msg);
       return msg;
+    }
+  }
+
+  /** Close at market, retrying the refusals that clear on their own: shares still held by a cancelling order (403), rate limit, 5xx, network. */
+  private async closeWithRetry(client: AlpacaClient, symbol: string): Promise<AlpacaOrder | null> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await client.closePosition(symbol);
+      } catch (err) {
+        if (err instanceof AlpacaError && err.status === 404) return null;
+        const transient = !(err instanceof AlpacaError) || err.status === 0 || err.status === 403 || err.status === 429 || err.status >= 500;
+        if (!transient || attempt >= 3) throw err;
+        await this.sleep(500 * 2 ** attempt);
+      }
+    }
+  }
+
+  private async drainFlattenRetries(): Promise<void> {
+    for (const r of [...this.flattenRetries.values()]) {
+      if (r.nextAt > this.now()) continue;
+      if (!this.engine.openPositions().some((p) => p.symbol === r.symbol)) {
+        this.flattenRetries.delete(r.symbol);
+        continue;
+      }
+      await this.flatten(r.symbol, r.breachId, r.rule, r.tradeKey, true);
     }
   }
 
@@ -597,8 +701,7 @@ export class Referee {
     const sym = symbol?.trim().toUpperCase() || null;
     const a = this.store.insertAction({ time: this.now(), kind: 'manual_flatten', symbol: sym, breachId: null, detail: `Manual flatten requested for ${sym ?? 'everything'}.`, ok: true });
     this.emit({ type: 'action', action: a });
-    this.lastFlatten.delete(sym ?? '*');
-    const detail = await this.flatten(sym, null, 'manual');
+    const detail = await this.flatten(sym, null, 'manual', null, true);
     return { ok: !/failed/i.test(detail), detail };
   }
 

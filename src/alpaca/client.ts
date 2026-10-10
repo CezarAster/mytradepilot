@@ -127,19 +127,30 @@ export class AlpacaClient {
     return this.request('DELETE', `${this.tradingHost}/v2/orders/${encodeURIComponent(id)}`, undefined, false);
   }
 
-  async cancelOrdersFor(symbol: string): Promise<number> {
-    const open = await this.listOrders({ status: 'open', symbols: symbol });
+  /**
+   * Cancel every working order on a symbol, bracket legs included, then wait (up to waitMs) until Alpaca lists none.
+   * Cancels complete asynchronously, and a close is refused while any order still holds the shares.
+   */
+  async cancelOrdersFor(symbol: string, waitMs = 3000): Promise<number> {
+    const sym = symbol.toUpperCase();
+    const openOn = async () => (await this.listOrders({ status: 'open', nested: false, symbols: sym })).filter((o) => o.symbol.toUpperCase() === sym);
+    const ids = new Set<string>();
+    for (const o of await openOn()) {
+      ids.add(o.id);
+      for (const leg of o.legs ?? []) ids.add(leg.id);
+    }
     let n = 0;
-    for (const o of open) {
-      if (o.symbol.toUpperCase() !== symbol.toUpperCase()) continue;
+    for (const id of ids) {
       try {
-        await this.cancelOrder(o.id);
+        await this.cancelOrder(id);
         n++;
       } catch (err) {
-        // Already filled or cancelled between the list and the cancel: fine.
+        // Already filled, cancelled, or a filled parent: fine.
         if (!(err instanceof AlpacaError && (err.status === 404 || err.status === 422))) throw err;
       }
     }
+    const deadline = Date.now() + waitMs;
+    while (ids.size && Date.now() < deadline && (await openOn()).length) await this.sleep(250);
     return n;
   }
 
