@@ -148,6 +148,7 @@ html.motion .frame-clock { opacity: 0; }
 .frame-head .states .pilot-slot { width: 14px; height: 14px; margin-right: 6px; }
 .frame-head .states i { width: 18px; height: 3px; border-radius: 2px; background: rgba(243,245,247,.12); }
 .frame-head .states i.on { background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+html:not(.motion) .frame-head .states i { background: var(--accent); box-shadow: 0 0 8px var(--glow); }
 .frame-stage { position: relative; flex: 1; min-height: 0; }
 .story-csv { position: absolute; inset: 0; margin: 0; font: 400 12px/20px var(--font-mono); color: var(--text-2); white-space: pre; overflow: hidden; opacity: 0; pointer-events: none; }
 .story-csv span { display: block; }
@@ -281,7 +282,7 @@ html:not(.motion) .loop[data-loop="partner"] .push { opacity: 1; transform: none
 html:not(.motion) .loop[data-loop="log"] .day { opacity: 1; transform: none; }
 /* card: the Record Card renders, then the labelled statement block fades in along the lower third */
 .loop[data-loop="card"] .card { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1; }
-.loop[data-loop="card"] .title { fill: var(--text); font-size: 9px; }
+.loop[data-loop="card"] .title { fill: var(--text); font-size: 8px; }
 .loop[data-loop="card"] .river { fill: none; stroke: var(--pos-mark); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 200; stroke-dashoffset: 0; }
 .loop[data-loop="card"] .stmt rect { fill: var(--bg); stroke: var(--line-strong); stroke-width: 1; }
 .loop[data-loop="card"] .stmt text { font-size: 7px; fill: var(--text-2); }
@@ -417,6 +418,7 @@ html.motion .signup-band { animation: pulse 6s ease-in-out infinite; }
 .signup-context[hidden] { display: none; }
 .signup-invite { margin-top: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
 .signup-invite[hidden] { display: none; }
+.signup-form[hidden] { display: none; }
 .signup-invite .invite-head { font: 400 22px/1.2 var(--font-display); color: var(--text); }
 .signup-invite .small { margin-top: 6px; color: var(--text-2); }
 .invite-text { display: block; width: 100%; margin-top: 12px; resize: vertical; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius-s); padding: 10px 12px; font: 400 14px/1.5 var(--font-body); }
@@ -731,5 +733,5 @@ html.motion .story-steps .step.active { opacity: 1; }
 html:not(.motion) .story-frame { height: auto; }
 html:not(.motion) .frame-stage { min-height: 820px; }
 @media (max-width: 768px) {
-  html:not(.motion) .frame-stage { min-height: 720px; }
+  html:not(.motion) .frame-stage { min-height: 900px; }
 }
