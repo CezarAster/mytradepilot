@@ -114,3 +114,12 @@ test('analyze: a group that loses money is a leak, one that is profitable never 
   }
   for (const e of report.edges) assert.ok(e.group.avgReturn > report.summary.avgReturn);
 });
+
+test('fills: optional Worst %/Best % columns become maePct/mfePct and turn on the stop check', () => {
+  const csv = ['Symbol,Side,Qty,Price,Time,Commission,Worst %,Best %', 'ABC,Buy,100,10,2026-03-02 09:35,1,,', 'ABC,Sell,100,11,2026-03-02 10:00,1,-3.1,12'].join('\n');
+  const { trades } = parseFile(csv, { timeZone: 'America/New_York', fileName: 'fills.csv' });
+  assert.equal(trades.length, 1);
+  assert.equal(trades[0].maePct, -3.1);
+  assert.equal(trades[0].mfePct, 12);
+  assert.equal(analyze(trades, { stopPct: 2 }).risk.hasExcursions, true);
+});
