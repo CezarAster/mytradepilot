@@ -13,7 +13,7 @@ const html = document.documentElement;
 /** Everything a module animates with inline styles; cleared when motion fails so nothing stays invisible (build notes). */
 export const FALLBACK_SELECTORS =
   '[data-reveal],[data-hero],[data-split],.pf-row,.pf-row .tick,.pf-stamp,.pf-face,.pf-say,.milestone,#declaration,#decl-slot,#decl-stage,' +
-  '#story-card,#story-rule,#story-held,#story-held .held-row,#story-held .held-status,#story-held .held-link,#story-push,#story-clock,#story-chips .chip,.lane,#story-csv';
+  '#story-rule,#story-held,#story-held .held-row,#story-held .held-status,#story-held .held-link,#story-push,#story-clock';
 
 function revealAllFallback(): void {
   html.classList.remove('motion');

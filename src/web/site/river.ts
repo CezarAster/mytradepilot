@@ -533,7 +533,11 @@ export class River {
       if (best >= 0) {
         const d = this.dots[best];
         const p = this.P[best];
-        this.tip.innerHTML = `<b>${d.sym} <span class="${d.ret >= 0 ? 'pos' : 'neg'}">${fmtPct(d.ret)}</span></b><small>${d.dir === 'long' ? 'Long' : 'Short'} · ${d.date} · ${fmtUsd(d.pnl)}</small>`;
+        // The context line (content spec 2.1): the engine's tags on this trade, so the river reads as the record the rule is written from.
+        const tags = [d.prev === 'quick-after-loss' ? 'quick re-entry' : '', d.tradeOfDay === 3 ? '3rd of the day' : d.tradeOfDay >= 4 ? '4th+ of the day' : ''].filter(Boolean);
+        this.tip.innerHTML =
+          `<b>${d.sym} <span class="${d.ret >= 0 ? 'pos' : 'neg'}">${fmtPct(d.ret)}</span></b><small>${d.dir === 'long' ? 'Long' : 'Short'} · ${d.date} · ${fmtUsd(d.pnl)}</small>` +
+          (tags.length ? `<small class="ctx">${tags.join(' · ')}</small>` : '');
         const flip = p.x > this.W - 170;
         this.tip.classList.toggle('flip', flip);
         this.tip.style.left = `${Math.round(p.x + this.par.x * 6 + (flip ? -14 : 0))}px`;
