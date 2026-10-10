@@ -901,3 +901,134 @@ Count-up parser for `.stat .value` (row 19): match `^([+\-−])?(\$)?([\d,]+)(?:
 `data-action="pick"`: `files.click()` synchronously in the click handler, then (≤ 768 px, or when `#input` is off-screen) scroll to `#input` (Lenis `scrollTo` with offset `-(nav + 16)`, or `scrollIntoView({ block: 'start' })` in RM), then `drop.focus()` and `drop.classList.add('pulse')` for 1.4s (CSS ring + scan line; static ring in RM). `data-action="demo"`: `demo.click()`. `data-action="help"`: open the hero `details.help`, scroll to it, then refresh. `[data-scroll-to]` / `href="#id"`: Lenis or native scroll (the prototype's `scrollToEl`, offset `-(navH + 8)`, `#top` → 0). Tabs: the `role=tablist` keyboard pattern. Motion toggle (8.4). Second signup: `setupSignup(document.getElementById('signup-report'))`; each form dispatches `signup:done` on success and the other replaces its inputs with its `.signup-msg` text "You're on the list." The file card adoption (3.1). The dock visibility rule is 3.16.
 
 ---
+
+## 7. DOM and data contract
+
+### 7.1 Untouched analyzer contract
+
+`#files` (file input, inside `#drop`), `#drop` (`<label for="files">`), `#tz` (`<select>`), `#stop` (`<input type=number>`), `#demo` (`<button>`), `#status` (`<p role=status>`), `#report` (`<div>`), `#signup` (`<section>` containing `form`, `input[type=email]#signup-email`, `button[type=submit]`, `.signup-msg`). Tag types and nesting assumptions in `main.ts` / `signup.ts` are preserved; **`src/web/main.ts` and `src/web/signup.ts` are not modified.** `style.css` keeps every selector the report uses (`.panel`, `.drop`, `.drop.over`, `.options`, `.help`, `.status`, `.banner`, `.stats`, `.stat`, `.label`, `.value`, `.note`, `.insights`, `.insight`, `.edge`, `.leak`, `.weak`, `.tag`, `.conf`, `.conf-too-few`, `.conf-early-signal`, `.conf-solid`, `.section-title`, `.dims`, `.dim`, `table`, `td`, `th`, `.num`, `tr.few`, `.barcell`, `.axis`, `.bar`, `.above`, `.below`, `.pos`, `.neg`, `.muted`, `.small`, `.signup`, `.signup-msg`, `.sr-only`, `button.link`) and only its token values and cosmetic rules change: the `:root` block becomes section 2.2 (the light theme and both dark blocks are deleted), `.panel` → `--surface` + 1px `--line` + radius 14, `.stats .stat` → `--surface-2` tiles with mono values at `clamp(28px, 1.2rem + 2vw, 40px)`, `.insight.edge/.leak/.weak` → the tinted cards of 2.5, `.tag` → the Flight Recorder tag, `.conf` → `.pill`, `tr.few` stays at opacity .5, bars keep `currentColor`, `.banner` → `--weak-soft` on `--weak` text (the only other amber), `.dim table` keeps its horizontal scroll panel.
+
+### 7.2 New ids (all must exist)
+
+`#skip`, `#top` (the nav header), `#nav-sample`, `#nav-join`, `#hero`, `#hero-river`, `#hero-canvas`, `#hero-end`, `#hero-labels`, `#hero-tooltip`, `#hero-sr`, `#cta-drop`, `#cta-sample`, `#input` (the console), `#file-card`, `#file-card-name`, `#file-card-meta`, `#results`, `#report-bar`, `#report-followup`, `#signup-report`, `#signup-email-2`, `#trust`, `#numbers`, `#num-pilot`, `#story`, `#story-frame`, `#story-states`, `#frame-pilot`, `#frame-stage`, `#story-csv`, `#story-lanes`, `#story-chips`, `#story-card`, `#story-dot`, `#story-counter`, `#story-steps`, `#story-run`, `#features`, `#shrink-lab`, `#shrink-examples`, `#shrink-diagram`, `#shrink-readout`, `#shrink-badge`, `#shrink-verdict`, `#shrink-n`, `#stop-lab`, `#stop-figure`, `#stop-ladder`, `#method`, `#privacy-wire`, `#export`, `#tab-tv`, `#tab-broker`, `#panel-tv`, `#panel-broker`, `#roadmap`, `#timeline`, `#roadmap-line`, `#roadmap-line-fill`, `#milestones`, `#pf-slot`, `#preflight-roadmap`, `#signup-form`, `#signup-btn`, `#wl-pilot`, `#signup-msg`, `#faq`, `#final`, `#motion-toggle`, `#dock`, `#pilot`, `#pilot-g`, `#pilot-tail`.
+
+### 7.3 Data attributes
+
+- `data-reveal` (+ `data-reveal-delay`), `data-split="lines|words"`, `data-hero` (the load-timeline targets), `data-hero-split` (the h1). CSS: `html.motion [data-reveal], html.motion [data-hero] { opacity: 0 }`, `html.motion [data-split] { visibility: hidden }` (prototype lines 347–351); without `html.motion` everything is visible.
+- `data-counter="112" data-counter-format="int|pct0|pct1|dec2"` (the four hero counters; text already holds the final value); `data-count="79" data-format="int|pctInt|pct|pct1|money|fixed2"` with optional `data-count-from="37.3"` for every other counted number.
+- `data-sample="<path>" data-format="<fmt>"`: binds the element's text to the engine's report on the sample. The HTML ships with the same value typed in (reduced motion, no-JS and crawlers see it); `sample.ts` overwrites it after computing and, in dev (`import.meta.env.DEV`), `console.warn`s `sample drift: <path> html="…" engine="…"` on any mismatch. Paths:
+  - `summary.<field>` for every `Summary` field (`trades`, `days`, `winRate`, `avgReturn`, `avgR`, `avgWin`, `avgLoss`, `totalPnl`, `totalReturn`, `profitFactor`, `maxDrawdown`, `symbols.length`)
+  - `risk.<field>` for `RiskStats` (`pastStop`, `pastStopCameBack`, `returnWithStop`, `top5Share`, `stopPct`)
+  - `stopAt.<pct>.<field>`: `analyze` re-run at another stop (`stopAt.1.5.returnWithStop`, `stopAt.3.pastStop`)
+  - `edges.<i>.<field>` / `leaks.<i>.<field>`: `sentence` (from `insightSentence`), `base` (the sentence up to and including "overall."), `phrase`, `n`, `winRate`, `avgReturn`, `confidence`, `returnWithout`, `pnlWithout`
+  - `group.<dimId>.<label>.<field>`: `GroupStats` by dimension id and the engine's exact label, e.g. `group.time.9:30–9:45.n`, `group.tradeOfDay.3rd.avgReturn`, `group.afterPrev.< 10 min after a loss.confidence`, `group.direction.Short.totalPnl`. Paths are split on `.` only at the three fixed positions (labels contain spaces, en dashes and `<`, never dots).
+  - `fills.rows` (232), `fills.kb` (`Math.round(bytes/1024)`, 12 after Step 0), `top5.<i>.symbol|returnPct|pnl`, `neverNear` (79), `stayedRed` (26), `cameBackPoints` (16.25), `stayedRedPoints` (−58.12), `equity.end|peak|trough|troughIndex|peakIndex`.
+  - Formats: `int`, `pctInt` (`Math.round(x*100) + '%'`), `pct` (`pct(x)`), `pct1` (`pct(x, 1)`), `money` (`money(x)`), `fixed2`, `text`. After formatting, ASCII `-` becomes U+2212 `−` for marketing text (the report itself is untouched).
+- `data-pilot-anchor="hero|numbers|frame|story|waitlist"`, `data-story-step`, `data-n`, `data-lane`, `data-face`, `data-ms`, `data-loop`, `data-example` (+ `data-n`, `data-raw`, `data-label`, `data-hypothetical`), `data-stop-path`, `data-report-label`, `data-visible`, `data-magnetic`, `data-action="pick|demo|help"`, `data-scroll-to`.
+
+### 7.4 Boot order and the `motion` class
+
+Inline in `<head>`, before the stylesheets (the prototype's gate, lines 431–439, with `localStorage` instead of the URL hash):
+
+```html
+<script>(function(){var h=document.documentElement;h.classList.add('js');try{var off=false;try{off=localStorage.getItem('motion')==='off'}catch(e){}if(matchMedia('(prefers-reduced-motion: no-preference)').matches&&!off)h.classList.add('motion');}catch(e){}window.__booted=false;setTimeout(function(){if(!window.__booted){h.classList.remove('motion');h.classList.add('motion-failed');}},2000);})();</script>
+```
+
+`site/index.ts` sets `window.__booted = true` at the end of `bootMotion()` / `bootStatic()`; `window.addEventListener('error', () => { if (!window.__booted) revealAll(); })` and the `catch` around `bootMotion()` call `revealAll()` (prototype lines 913–918, extended as in 6.3), which removes `html.motion` and clears inline `opacity/visibility/transform/height/minHeight` on every reveal target, pre-check row/tick/verdict/face, milestone and the slot. `@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }` is the belt-and-braces rule. `motion.ts` also listens to the `prefers-reduced-motion` media query `change` event and calls `disable()` (8.4) when it flips to reduce.
+
+Script order in `index.html`: `<script type="module" src="/src/web/main.ts">` first (analyzer; imports only the core and `signup.ts`), then `<script type="module" src="/src/web/site/index.ts">`. Module scripts execute in document order, so the analyzer binds before any site code runs; the site chunk never imports `main.ts`. `index.ts` waits for `Promise.race([document.fonts.ready, 900ms])`, then boots; section modules (`story`, `labs`, `tiles`, `preflight`) are lazy-imported when their section is within 150% of the viewport (IntersectionObserver `rootMargin: '150% 0px'`); `river.ts`, `pilot.ts`, `reportMotion.ts` and `nav.ts` load with `motion.ts`.
+
+### 7.5 File layout
+
+```
+index.html                         new structure; every id in 7.2; the head script in 7.4; both module scripts; both stylesheets; Google Fonts links
+src/web/main.ts                    UNCHANGED
+src/web/signup.ts                  UNCHANGED
+src/web/style.css                  analyzer + report styles; tokens replaced by section 2.2; selectors kept (7.1)
+src/web/site.css                   marketing layout, components (2.5), keyframes (bento, scan, pulse), motion gating, reduced-motion rules, `@import 'lenis/dist/lenis.css'`
+src/web/site/index.ts              boot: fonts race, import('./motion.ts'), bootMotion/bootStatic, revealAll, lazy section imports
+src/web/site/motion.ts             gsap + ScrollTrigger + SplitText registration, Lenis (gsap.ticker driven), reveal()/split()/count() utilities,
+                                   refresh() debounce, enable()/disable(), the reduced-motion change listener, matchMedia contexts
+src/web/site/sample.ts             getSample(), tagTrades consumer, equity series, stopAt map, bindSampleNumbers(root), dev drift warning (6.0)
+src/web/site/river.ts              the hero canvas (section 5): River class, pointer, exit scrub, labels, file-card adoption hook
+src/web/site/story.ts              the four-scroll frame (6.1)
+src/web/site/pilot.ts              the pilot marker (6.2)
+src/web/site/preflight.ts          roadmap line scrub, milestones, pre-trade check timeline (6.3)
+src/web/site/labs.ts               shrink lab + stop lab (6.4, 6.5)
+src/web/site/tiles.ts              bento .is-visible gating, privacy pulse (6.6, row 43)
+src/web/site/reportMotion.ts       MutationObserver + ResizeObserver on #report (6.7)
+src/web/site/nav.ts                stuck nav, data-action / data-scroll-to delegation, dock, tabs, details/FAQ refresh hooks, motion toggle,
+                                   drop pulse, file card adoption, second setupSignup, signup:done, magnetic buttons
+src/core/analyze.ts                + export `tagTrades(trades: Trade[]): TaggedTrade[]` (additive; see below)
+src/core/parsers/fills.ts          Step 0
+scripts/make-sample.py             Step 0
+public/sample-trades.csv           regenerated by Step 0
+test/engine.test.ts                + Step 0 test
+test/site.test.ts                  new: (a) tagTrades group counts == engine GroupStats.n for every dimension and the lane counts 45/38/26/3;
+                                   (b) every data-sample in index.html equals the engine value after formatting (regex over the HTML, U+2212 normalised to '-');
+                                   (c) the shrink-lab reference values in 6.4; (d) #signup form action == the Buttondown URL built from SIGNUP.id;
+                                   (e) the three copy trades exist with their contexts (ORBX short 2026-04-09 11:15 tradeOfDay 3 prev quick-after-loss;
+                                   LUMN long 2026-03-05 09:42 tradeOfDay 1; LUMN long 2026-03-03 6 fills overnight); (f) Step 0's RISK numbers 33 / 7 / 13.2
+README.md                          + one line (0.3)
+docs/prototypes/equity-river-v2.html  the locked look (already in the repo)
+package.json                       unchanged (gsap, lenis already present)
+```
+
+`tagTrades` (additive export in `analyze.ts`, no behaviour change): returns, per closed trade in the engine's order, `{ trade, date, minutes, weekday, tradeOfDay, prev, holdMin, overnight, labels: { time, tradeOfDay, afterPrev, direction, hold } }`, where `labels.*` are the matching bucket labels computed with the same `Bucket.test` functions the dimensions use. Implement it by reusing `withContext` and the bucket arrays; do not duplicate the bucket boundaries anywhere else.
+
+Every site module exports `mount(ctx: { gsap; ScrollTrigger; lenis: Lenis | null; reduced: boolean; sample: Promise<SampleData> }): { destroy(): void }`. `destroy()` kills the module's tweens and triggers and leaves its DOM in the static final state.
+
+---
+
+## 8. Performance plan
+
+### 8.1 Budgets (gzipped transfer unless noted; measured sizes in the preamble)
+
+- JS total ≤ 100 KB target, 110 KB hard cap: analyzer entry (`main.ts` + core + `signup.ts`) ≤ 12 KB; `site/index.ts` ≤ 3 KB; motion vendor chunk (gsap core 28.3 + ScrollTrigger 18.0 + SplitText 3.7 + Lenis 8.2 = 58.2 KB); site modules combined ≤ 25 KB. No CustomEase, DrawSVG, Flip, ScrollSmoother, ScrambleText.
+- CSS ≤ 24 KB gz (`style.css` + `site.css` + `lenis.css`).
+- Fonts ≤ 130 KB (110.5 KB measured). `preconnect` to both Google hosts; `display=swap`; the fallback `@font-face` metrics in 2.3.
+- Zero raster images, zero video. All illustrations inline SVG; the hero and the story chips are canvas and DOM.
+- Sample CSV: 12.3 KB raw after Step 0, fetched once at idle; the `#demo` fetch hits the HTTP cache (same URL string).
+- Targets (Lighthouse mobile, simulated 4G, built site): Performance ≥ 90, Accessibility ≥ 95, LCP (the h1) < 2.5s, CLS < 0.05, TBT < 150ms, INP < 200ms. Every canvas, figure and the story frame has its size reserved in CSS (`min-height`, `height`, `aspect-ratio`) so nothing shifts when modules mount.
+
+### 8.2 Loading
+
+1. HTML + CSS + preconnects; fonts swap in (the h1 waits ≤ 900ms for them before splitting).
+2. `main.ts` executes: the drop zone, options, sample button and the band's form are live before any site code.
+3. `site/index.ts` executes: boot gate, `import('./motion.ts')`; `nav.ts`, `reportMotion.ts`, `river.ts`, `pilot.ts` mount when it resolves; `sample.ts` starts its fetch at idle; the river draws its grid at once and starts the rain when the data arrives (the canvas is visible at load).
+4. Section modules lazy by proximity (7.4). The story module waits for `getSample()`.
+5. Nothing awaits the analyzer, and the analyzer awaits nothing.
+
+### 8.3 Runtime
+
+Canvas: DPR cap 2 (1.5 ≤ 768); `setTransform` once per layout; sprites cached per radius; the rAF stops when the hero leaves the viewport, `document.hidden`, or once the pilot owns the end marker and the pointer is away; the story has no canvas (112 transformed divs with `will-change: transform`, positions precomputed once per resize). ScrollTrigger: `ScrollTrigger.config({ ignoreMobileResize: true, limitCallbacks: true })`; no pins; scrubbed properties are transform / opacity / clip-path / `stroke-dashoffset` / canvas `exit` / text only. Lenis: `new Lenis({ lerp: 0.1, autoRaf: false })`, `lenis.on('scroll', e => { ScrollTrigger.update(); onScrollNav(e.scroll) })`, `gsap.ticker.add(t => lenis.raf(t * 1000))`, `gsap.ticker.lagSmoothing(0)`; never `ScrollSmoother` or `ScrollTrigger.normalizeScroll`. `content-visibility: auto` with `contain-intrinsic-size` on `#faq` and `footer` only (never on sections carrying ScrollTriggers). SplitText is applied to at most 12 elements and reverted when its reveal completes. Loops gated by IntersectionObserver and `visibilitychange`.
+
+### 8.4 Reduced motion plan (complete; applies to `prefers-reduced-motion: reduce` and to `motion=off`)
+
+1. `html.motion` is never added, so no element starts hidden or offset; every reveal target, chip, card, pill and figure is in its final state at first paint.
+2. `motion.ts` is still imported (for `data-action`, the dock, tabs and the toggle) but creates no Lenis, no ScrollTrigger, no SplitText.
+3. Hero: `drawStatic()` (the final frame with labels), no rain, no tooltip, no tilt, no exit; `#signup-btn.landed`.
+4. Story: `setStatic()` (6.1); no sticky; all four steps at full opacity.
+5. Pilot: never activated; the ◆ is shown inside the waitlist button from CSS.
+6. Pre-check: face A static, face B hidden; the roadmap line filled from CSS; milestones static.
+7. Bento and the privacy pulse: shipped SVG state; no `.is-visible` work.
+8. Shrink lab: no sweep; slider and chips update instantly. Stop lab: paths drawn from CSS.
+9. Report arrival: no count-ups or staggers; `has-report`, the bar and the followup still show; the scroll is `main.ts`'s native one.
+10. Anchors and `data-scroll-to` use native `scrollIntoView({ behavior: 'auto' })`; the drop pulse is a static ring; the dock toggles opacity only.
+11. The footer toggle. **Off** (from on): store `motion=off`, then `disable()`: `ScrollTrigger.getAll().forEach(t => t.kill())`, each module's `destroy()`, `splits.forEach(s => s.revert())`, `gsap.globalTimeline.clear()`, `lenis?.destroy()`, remove `html.motion` and `html.pilot-on`, `revealAll()`, `river.drawStatic()`, `story.setStatic()`, `#signup-btn.landed`; the page is then in state 1–10 without a reload. **On** (from off): store `motion=on`; if `#report` is empty, `location.reload()`; otherwise set the button text to "Motion: on next load" so the visitor's report is not lost. The button label reflects `aria-pressed`.
+12. The `prefers-reduced-motion` media query `change` to `reduce` calls `disable()` live (no store); a change back to `no-preference` does nothing until the next load.
+
+---
+
+## 9. Mobile plan (375 px, 16 px gutters)
+
+- `html, body { overflow-x: clip }` as a backstop only (`clip` does not break `position: sticky`; `hidden` would). Every canvas and SVG is `width: 100%` with a `viewBox` or a reserved height; `#story-csv` is `overflow: hidden; white-space: pre`; the frame is `overflow: hidden`; report tables keep their own `overflow-x: auto` panel; chip rows scroll inside their container with `scroll-snap-type: x mandatory`; SplitText masks are `overflow: hidden`; `#pf-slot` and `.roadmap-cta` have `min-width: 0` so the nowrap mono rows cannot inflate the grid (a per-element overflow check is part of acceptance 2, because `overflow-x: clip` hides overflow from `scrollWidth`). No element is wider than `100vw − 32px`.
+- Nav 56px: brand + filled "Join the waitlist"; section links in the footer; skip link kept.
+- Hero (`.hero { min-height: 0; display: block }`): the river as a 40vh band under the nav (5), `.hero-inner { display: block; padding: 28px 0 40px }`, `.hero-text { padding-top: 26vh }`, h1 44px (40px ≤ 480) `margin: 12px 0 18px`, lede 16px, CTAs stacked full width (`flex: 1 1 auto`, `margin-top: 24px`): "Choose my CSV files" (primary) then "Run the sample report"; then the console (`margin-top: 20px; padding: 20px`, drop zone `padding: 24px 16px`, options in one column, file card full width). The primary CTA is fully visible at 375×667 and both CTAs at 375×740 (acceptance 2). The caption and tooltip are hidden.
+- Results: `#report-followup` stacked; the mini form's input and button stack full width.
+- Trust: one column. Counters: 2×2, 34px values. Story: 6.1's phone block (sticky frame 58vh, steps 40vh). Bento: one column, 14px gap, tiles `padding: 18px`, loops still run (at most the two most-centred tiles at once). Shrink lab and stop lab per 3.7/3.8. Method: wire 240px tall above the checklist. Export: tabs full width. Roadmap: 3.11's ≤ 899 block. Band: one column, `padding: 32px 24px`. FAQ summaries 16px padding. Footer stacked.
+- Dock: the 64px bottom bar with `env(safe-area-inset-bottom)`; `main { padding-bottom: 80px }` at ≤ 768; hidden while an input has focus (keyboard-aware) and under the other rules in 3.16.
+- Pilot off; magnetic off; tilt/parallax off; `pointer: coarse` gets no hover tooltips. Lenis uses native touch scrolling (`syncTouch` default false); no pins anywhere, so iOS address-bar resizes cannot jump content; `ignoreMobileResize` stays on. An iPad in landscape (≥ 769, touch) gets the sticky story and the pilot like desktop; both are CSS sticky and per-frame rects, so they are safe.
+- Tap targets ≥ 44px; the report tables remain the existing horizontally scrollable panels (bar column hidden under 560px, as today).
+
+---
