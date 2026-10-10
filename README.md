@@ -29,7 +29,7 @@ npm run build      # static site in dist/, deployable anywhere (GitHub Pages, Ne
 
 ## The copy
 
-The page never says "skip this trade", "verdict" or "coach", never compares the visitor with other traders, never claims a saving or a pass rate, and never prints a stop level or a size. Third-party findings appear only in `#why` and FAQ 6, with their source and caveat. Invented numbers (the declaration card, the held panel, the partner pushes, the day card, the Record Card tile) are labelled "illustrative" in the same component. A test greps the page, the stylesheets and the rendered sample report for the forbidden phrases.
+The page uses the strategy's phrasing ("your rule says", "your record shows"), never compares the visitor with other traders, never claims a saving, and never prints a stop level or a size; the phrases it must never use are listed in `test/fixtures/forbidden-phrases.txt`. Third-party findings appear only in `#why` and FAQ 6, with their source and caveat. Invented numbers (the declaration card, the held panel, the partner pushes, the day card, the Record Card tile) are labelled "illustrative" in the same component. A test greps the page, the stylesheets and the rendered sample report for the forbidden phrases.
 
 ## Waitlist signup
 
