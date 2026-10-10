@@ -1,5 +1,4 @@
-// Ask Claude: a static page. The MCP setup steps and the tool list are filled in by the MCP server's author
-// at the two placeholders below.
+// Ask Claude: how to connect Claude Desktop or Claude Code to the Referee through its MCP server (src/mcp/main.ts).
 import type { View } from '../main.ts';
 
 export const view: View = { title: 'Ask Claude', render };
@@ -26,11 +25,45 @@ function render(root: HTMLElement): () => void {
     </section>
     <section class="panel prose">
       <h2>Set up</h2>
-      <!-- MCP_SETUP -->
+      <p>Both setups point Claude at <code>src/mcp/main.ts</code> in your MyTradePilot folder. Replace the path with yours. The Referee must be running (<code>npm start</code>) while you ask.</p>
+      <h3>Claude Code</h3>
+      <pre><code>claude mcp add mytradepilot -- node /full/path/to/mytradepilot/src/mcp/main.ts</code></pre>
+      <h3>Claude Desktop</h3>
+      <p>Settings, Developer, Edit Config, then add this to <code>claude_desktop_config.json</code> and restart Claude Desktop:</p>
+      <pre><code>{
+  "mcpServers": {
+    "mytradepilot": {
+      "command": "node",
+      "args": ["/full/path/to/mytradepilot/src/mcp/main.ts"]
+    }
+  }
+}</code></pre>
+      <p class="muted">If the Referee runs on another port, add <code>"env": { "MYTRADEPILOT_URL": "http://127.0.0.1:4343" }</code> next to <code>"args"</code>. Node 22.18 or newer must be on your PATH.</p>
+      <h3>Try asking</h3>
+      <ul>
+        <li>"What does my record say about taking a 4th trade right now?"</li>
+        <li>"Check NVDA long against my setup."</li>
+        <li>"Which rule did I break most this month, and what did it cost?"</li>
+        <li>"Walk me through today's trades and breaches."</li>
+      </ul>
     </section>
     <section class="panel prose">
       <h2>What Claude can see</h2>
-      <!-- MCP_TOOLS -->
+      <table class="plain">
+        <thead><tr><th>Tool</th><th>What Claude gets</th></tr></thead>
+        <tbody>
+          <tr><td><code>get_next_trade</code></td><td>The next-trade panel: trade number of the day, blockers with clear times, context, your record lines with confidence and intervals, open positions and stops, lock status, today's totals.</td></tr>
+          <tr><td><code>get_rules</code></td><td>Your rulebook, today's plan and the enforcement mode.</td></tr>
+          <tr><td><code>get_record</code></td><td>The full record report: edges, leaks and every breakdown, with confidence labels.</td></tr>
+          <tr><td><code>get_today</code></td><td>Today's trades, breaches and referee actions.</td></tr>
+          <tr><td><code>get_trades</code></td><td>Closed trades over the last N days.</td></tr>
+          <tr><td><code>get_breaches</code></td><td>Rule breaches over the last N days.</td></tr>
+          <tr><td><code>get_strategy</code></td><td>Your plain-English strategy and the setup thresholds.</td></tr>
+          <tr><td><code>check_setup</code></td><td>A symbol measured against your strategy right now, plus what the rules say about the next trade.</td></tr>
+          <tr><td><code>declare_trade</code></td><td>Stamps "I'm taking this" for you, only when you ask Claude to declare.</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">Not exposed on purpose: changing rules, toggling enforcement, the kill switch, closing positions, and your Alpaca keys.</p>
     </section>`;
   return () => undefined;
 }

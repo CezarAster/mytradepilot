@@ -278,9 +278,11 @@ function route(): void {
   const view = routes[path];
   if (cleanup) cleanup();
   cleanup = null;
-  const root = document.getElementById('view');
-  if (!root) return;
-  root.innerHTML = '';
+  const stale = document.getElementById('view');
+  if (!stale) return;
+  // A fresh element per mount, so listeners a view attached to the root die with it instead of stacking up.
+  const root = stale.cloneNode(false) as HTMLElement;
+  stale.replaceWith(root);
   document.title = `${view.title} · MyTradePilot Referee`;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('.nav a[data-route]')) {
     if (a.dataset.route === path) a.setAttribute('aria-current', 'page');

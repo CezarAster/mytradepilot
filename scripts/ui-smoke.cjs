@@ -43,7 +43,7 @@ async function waitFor(url, ms) {
     const routes = ['#/', '#/rules', '#/record', '#/setup', '#/settings', '#/log', '#/ask'];
     const seen = {};
     for (const route of routes) {
-      await page.goto(base + route, { waitUntil: 'networkidle' });
+      await page.goto(base + route, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(600);
       const text = await page.evaluate(() => document.body.innerText);
       seen[route] = text.slice(0, 4000);
@@ -54,16 +54,19 @@ async function waitFor(url, ms) {
     for (const needle of ['Trade 1', 'rule', 'Settings']) if (!new RegExp(needle, 'i').test(today)) problems.push(`Today page lacks "${needle}"`);
     if (!/not configured|Alpaca|keys/i.test(today)) problems.push('Today page does not point the user at Settings when unconfigured');
     if (!/dry run/i.test(today)) problems.push('Today page does not show the dry run state');
-    if (!/09:30|9:30/.test(seen['#/rules'])) problems.push('Rules page does not show the session window');
+    await page.goto(base + '#/rules', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(400);
+    const windowStart = await page.locator('input[name="sessionWindow.start"]').inputValue().catch(() => '');
+    if (windowStart !== '09:30') problems.push(`Rules page session window start is "${windowStart}", expected 09:30`);
     if (!/MCP|Claude/i.test(seen['#/ask'])) problems.push('Ask page lacks MCP instructions');
 
     // Interactions: save bad keys -> error toast; declare -> pending shown; confirm plan.
-    await page.goto(base + '#/settings', { waitUntil: 'networkidle' });
+    await page.goto(base + '#/settings', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(400);
     const keyInputs = await page.locator('input').count();
     if (keyInputs < 2) problems.push('Settings page has fewer than 2 inputs');
 
-    await page.goto(base + '#/', { waitUntil: 'networkidle' });
+    await page.goto(base + '#/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(400);
     const declareBtn = page.getByRole('button', { name: /taking this/i }).first();
     if (await declareBtn.count()) {
@@ -85,6 +88,9 @@ async function waitFor(url, ms) {
       await page.waitForTimeout(600);
       const st = await (await fetch(`http://127.0.0.1:${PORT}/api/state`)).json();
       if (st.status.enforcement.enabled) problems.push('kill switch did not turn enforcement off');
+      // Each button press must reach the server exactly once (listeners must not stack across page visits).
+      const kills = st.recentActions.filter((a) => /kill switch/i.test(a.detail)).length;
+      if (kills !== 1) problems.push(`kill switch produced ${kills} actions, expected 1`);
     } else problems.push('no kill switch button on Today');
     await browser.close();
   } catch (err) {
