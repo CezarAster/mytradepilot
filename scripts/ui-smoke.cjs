@@ -1,0 +1,102 @@
+// UI smoke test for the Referee. Needs the built UI (npm run build:app) and playwright-core:
+//   npm install --no-save playwright-core && node scripts/ui-smoke.cjs
+// Uses your installed Google Chrome (channel "chrome"); set CHROMIUM_PATH to use another Chromium.
+// Starts the referee on a temp data dir, opens every page, and fails on console errors, failed requests
+// or missing landmark text; screenshots land next to this script.
+const { spawn } = require('node:child_process');
+const { mkdtempSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
+
+const REPO = require('node:path').resolve(__dirname, '..');
+const PORT = 4311;
+
+async function waitFor(url, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) return;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error('service did not start');
+}
+
+(async () => {
+  const home = mkdtempSync(join(tmpdir(), 'ui-smoke-'));
+  const svc = spawn(process.execPath, ['src/server/main.ts'], { cwd: REPO, env: { ...process.env, MYTRADEPILOT_HOME: home, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let svcLog = '';
+  svc.stdout.on('data', (d) => (svcLog += d));
+  svc.stderr.on('data', (d) => (svcLog += d));
+  const problems = [];
+  try {
+    await waitFor(`http://127.0.0.1:${PORT}/api/health`, 15000);
+    const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : { channel: 'chrome' });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.on('console', (m) => { if (m.type() === 'error') problems.push(`console error: ${m.text()}`); });
+    page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
+    page.on('requestfailed', (r) => { if (!r.url().includes('/api/events')) problems.push(`request failed: ${r.url()} ${r.failure()?.errorText}`); });
+    page.on('response', (r) => { if (r.status() >= 400 && !r.url().includes('/api/setup-check')) problems.push(`HTTP ${r.status()} ${r.url()}`); });
+
+    const base = `http://127.0.0.1:${PORT}/`;
+    const routes = ['#/', '#/rules', '#/record', '#/setup', '#/settings', '#/log', '#/ask'];
+    const seen = {};
+    for (const route of routes) {
+      await page.goto(base + route, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(600);
+      const text = await page.evaluate(() => document.body.innerText);
+      seen[route] = text.slice(0, 4000);
+      if (text.trim().length < 40) problems.push(`${route}: page is nearly empty`);
+      await page.screenshot({ path: join(__dirname, `shot-${route.replace(/[#/]/g, '') || 'today'}.png`), fullPage: true });
+    }
+    const today = seen['#/'];
+    for (const needle of ['Trade 1', 'rule', 'Settings']) if (!new RegExp(needle, 'i').test(today)) problems.push(`Today page lacks "${needle}"`);
+    if (!/not configured|Alpaca|keys/i.test(today)) problems.push('Today page does not point the user at Settings when unconfigured');
+    if (!/dry run/i.test(today)) problems.push('Today page does not show the dry run state');
+    if (!/09:30|9:30/.test(seen['#/rules'])) problems.push('Rules page does not show the session window');
+    if (!/MCP|Claude/i.test(seen['#/ask'])) problems.push('Ask page lacks MCP instructions');
+
+    // Interactions: save bad keys -> error toast; declare -> pending shown; confirm plan.
+    await page.goto(base + '#/settings', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    const keyInputs = await page.locator('input').count();
+    if (keyInputs < 2) problems.push('Settings page has fewer than 2 inputs');
+
+    await page.goto(base + '#/', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    const declareBtn = page.getByRole('button', { name: /taking this/i }).first();
+    if (await declareBtn.count()) {
+      await declareBtn.click();
+      await page.waitForTimeout(600);
+      const after = await page.evaluate(() => document.body.innerText);
+      if (!/declar/i.test(after)) problems.push('after declaring, the page does not show the declaration');
+    } else problems.push('no "I\'m taking this" button on Today');
+    const planBtn = page.getByRole('button', { name: /confirm today/i }).first();
+    if (await planBtn.count()) {
+      await planBtn.click();
+      await page.waitForTimeout(600);
+      const after = await page.evaluate(() => document.body.innerText);
+      if (!/confirmed/i.test(after)) problems.push('after confirming the plan, the page does not say confirmed');
+    } else problems.push('no "Confirm today\'s plan" button on Today');
+    const kill = page.getByRole('button', { name: /kill/i }).first();
+    if (await kill.count()) {
+      await kill.click();
+      await page.waitForTimeout(600);
+      const st = await (await fetch(`http://127.0.0.1:${PORT}/api/state`)).json();
+      if (st.status.enforcement.enabled) problems.push('kill switch did not turn enforcement off');
+    } else problems.push('no kill switch button on Today');
+    await browser.close();
+  } catch (err) {
+    problems.push(`fatal: ${err.message}`);
+  } finally {
+    svc.kill('SIGINT');
+    rmSync(home, { recursive: true, force: true });
+  }
+  if (problems.length) {
+    console.log('PROBLEMS:\n' + problems.map((p) => ' - ' + p).join('\n'));
+    console.log('--- service log ---\n' + svcLog.slice(-2000));
+    process.exit(1);
+  }
+  console.log('UI smoke: OK');
+})();
