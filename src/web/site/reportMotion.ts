@@ -39,7 +39,14 @@ export function mount(ctx: Ctx): Module {
     const scroll = pendingScroll;
     pendingScroll = false;
     if (!ctx.reduced) {
-      if (scroll && ctx.lenis) ctx.lenis.scrollTo(report, { offset: -(navH() + 16), duration: 0.9 });
+      if (scroll && ctx.lenis) {
+        // main.ts's native smooth scroll is already moving the page, so Lenis's own element maths (its
+        // animatedScroll lags window.scrollY by a frame) lands short; give it a document position instead,
+        // with the report bar, not the report, under the nav so the label is never hidden behind it
+        const anchor = bar && !bar.hidden ? bar : report;
+        const y = anchor.getBoundingClientRect().top + window.scrollY - (navH() + 16);
+        ctx.lenis.scrollTo(Math.max(0, y), { duration: 0.9 });
+      }
       gsap.from(report.querySelectorAll('.stats .stat'), { y: 8, opacity: 0, duration: 0.5, stagger: 0.04, ease: 'expo.out', clearProps: 'all' });
       gsap.from(report.querySelectorAll('.insight'), { y: 10, opacity: 0, duration: 0.5, delay: 0.1, stagger: 0.06, ease: 'expo.out', clearProps: 'all' });
       gsap.from(report.querySelectorAll('.conf'), { scale: 1.18, opacity: 0, duration: 0.4, delay: 0.25, stagger: 0.06, ease: 'power3.out', clearProps: 'transform,opacity' });

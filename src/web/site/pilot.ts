@@ -150,7 +150,10 @@ export class Pilot {
         const dy = B.y - A.y;
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
         const sign = i % 2 ? -1 : 1;
-        const C = { x: (A.x + B.x) / 2 + (-dy / len) * len * 0.3 * sign, y: (A.y + B.y) / 2 + (dx / len) * len * 0.3 * sign };
+        // 30% of the A–B distance along the perpendicular, capped so the long story → waitlist flight
+        // (several thousand px on this page) still arcs inside the viewport instead of 2000px off its edge
+        const push = Math.min(len * 0.3, window.innerWidth * 0.2);
+        const C = { x: (A.x + B.x) / 2 + (-dy / len) * push * sign, y: (A.y + B.y) / 2 + (dx / len) * push * sign };
         const q = 1 - p;
         pos = { x: q * q * A.x + 2 * q * p * C.x + p * p * B.x, y: q * q * A.y + 2 * q * p * C.y + p * p * B.y };
         flying = true;
@@ -161,7 +164,11 @@ export class Pilot {
     this.g.setAttribute('transform', `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)})`);
     if (flying) {
       const lp = this.tail[0];
-      if (!lp || Math.abs(lp.x - pos.x) + Math.abs(lp.y - pos.y) > 6) {
+      const moved = lp ? Math.abs(lp.x - pos.x) + Math.abs(lp.y - pos.y) : Infinity;
+      // a jump (fast wheel, scrollbar drag, scrolling back from the landed button) restarts the tail,
+      // otherwise its circles would hang in the viewport far from the marker
+      if (moved > 160) this.tail = [];
+      if (moved > 6) {
         this.tail.unshift(pos);
         if (this.tail.length > 9) this.tail.pop();
       }
@@ -183,6 +190,7 @@ export class Pilot {
     this.btn?.classList.toggle('landed', yes);
     this.g.style.visibility = yes ? 'hidden' : 'visible';
     this.tailG.style.visibility = yes ? 'hidden' : 'visible';
+    this.tail = [];
   }
 }
 

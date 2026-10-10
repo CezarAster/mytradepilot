@@ -473,9 +473,8 @@ html.motion .signup-band { animation: pulse 6s ease-in-out infinite; }
 .faq details[open] .faq-body { grid-template-rows: 1fr; }
 .faq-body > p { overflow: hidden; min-height: 0; color: var(--text-2); font-size: 16px; line-height: 1.6; max-width: 70ch; }
 .faq details[open] .faq-body > p { padding: 0 0 18px; }
-#faq, .footer { content-visibility: auto; }
-#faq { contain-intrinsic-size: auto 1200px; }
-.footer { contain-intrinsic-size: auto 260px; }
+/* no content-visibility here: when #faq/.footer swap their placeholder height for the real one, every
+   ScrollTrigger below them goes stale (the final band's reveals fired 280px late and its last line never showed) */
 
 /* final band */
 .final { background: var(--bg-2); border-top: 1px solid var(--line); padding: 96px 0; text-align: center; }
@@ -626,6 +625,7 @@ html.motion .story-steps .step.active { opacity: 1; }
   .chip-row { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; margin-inline: calc(-1 * var(--gutter)); padding-inline: var(--gutter); }
   .chip-row .mchip { scroll-snap-align: start; flex: none; white-space: nowrap; }
   .lab-panel svg#shrink-diagram { height: 300px; }
+  .lab-panel svg#shrink-diagram text { font-size: 14px; } /* the 560-unit viewBox renders at ~0.6x on phones */
   .lab-panel svg#stop-figure { height: 240px; }
   .lab-panel svg#privacy-wire { height: 240px; }
   .ladder { gap: 8px; }
