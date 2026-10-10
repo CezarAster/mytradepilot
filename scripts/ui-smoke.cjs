@@ -66,6 +66,20 @@ async function waitFor(url, ms) {
     const keyInputs = await page.locator('input').count();
     if (keyInputs < 2) problems.push('Settings page has fewer than 2 inputs');
 
+    // Import the sample fills through the Record page and expect the report to render.
+    await page.goto(base + '#/record', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(400);
+    const fileInput = page.locator('input[type="file"]').first();
+    if (await fileInput.count()) {
+      await fileInput.setInputFiles(join(REPO, 'public', 'sample-trades.csv'));
+      const importBtn = page.getByRole('button', { name: /^import/i }).first();
+      if (await importBtn.count()) await importBtn.click();
+      await page.waitForTimeout(1500);
+      const rec = await page.evaluate(() => document.body.innerText);
+      if (!/win rate/i.test(rec)) problems.push('Record page did not render the report after importing the sample CSV');
+      if (!/imported/i.test(rec)) problems.push('Record page did not confirm the import');
+    } else problems.push('Record page has no file input');
+
     await page.goto(base + '#/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(400);
     const declareBtn = page.getByRole('button', { name: /taking this/i }).first();
