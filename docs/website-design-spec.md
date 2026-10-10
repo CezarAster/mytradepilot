@@ -587,3 +587,361 @@ Three rows: (1) "Educational tool, not investment advice. Past results don't pre
 One fixed element, `role="region" aria-label="Quick actions"`. Desktop (≥ 768px): a bottom-center pill, 52px tall, `--surface` at 92% + blur, 1px `--line-strong`, radius pill, two buttons: `.btn-primary` "Drop your CSV" `data-action="pick"` and `.btn-secondary` "See the sample" `data-action="demo"`. Mobile (≤ 767px): a full-width 64px bar with `padding-bottom: env(safe-area-inset-bottom)` and one `.btn-primary` "See the sample report" `data-action="demo"`; `main { padding-bottom: 80px }` at ≤ 767px, set once in CSS.
 
 Visibility rule (`nav.ts`, IntersectionObservers): shown when `#input` has scrolled above the viewport; hidden while any of `#input`, `#report-followup`, `#signup-roadmap`, `#final` intersects, while `body.has-report`, while any `input`/`select`/`textarea` has focus, and before first scroll. Toggled by `data-visible="true|false"`; CSS transitions `transform` 250ms (opacity-only under reduced motion).
+
+---
+
+## 4. Animation choreography
+
+Defaults: `data-reveal` elements animate once on enter (`ScrollTrigger` `start: 'top 85%'`, `once: true`). `lines` = SplitText `type: 'lines', mask: 'lines', autoSplit: true`, from `yPercent: 110` to 0, 0.9s `power4.out`, stagger 0.06. `up` = `y: 16, opacity: 0 → 1`, 0.64s. `fade` = opacity only, 0.48s. Count-ups: `power2.out`, 1.1s unless noted. "RM" = reduced motion (`prefers-reduced-motion: reduce`, or `motion=off` stored): no Lenis, no ScrollTriggers, no loops; everything is in its final state from the first paint.
+
+| # | Section | Element | Trigger | Effect | Timing | Technique | RM | Why (conversion) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Nav | `#nav` contents | load | fade + y 8px → 0, stagger 60ms | 0.4s, delay 0.1 | gsap.from | static | calm entrance |
+| 2 | Nav | `#nav` | scroll > 40px | `.is-stuck` (blur, border) | 200ms | class toggle | same | waitlist link reachable without stealing attention |
+| 3 | Hero | eyebrow | load | up | 0.4s, delay 0.05 | gsap | static | reading order |
+| 4 | Hero | h1 | load, after `document.fonts.ready` (max 500ms wait) | lines reveal; then `.hl` swipe `background-size 0 → 100%` | 0.9s from 0.15; swipe 0.52s at 1.0 | SplitText + gsap | static, swipe at 100% | the baseline the client asked for, on the one word that reframes |
+| 5 | Hero | lede | load | up | 0.64s, delay 0.45 | gsap | static | reading order |
+| 6 | Hero | `#input` panel | load | opacity 0.6 → 1, y 12 → 0 (never below 0.6, never `pointer-events: none`) | 0.5s, delay 0.3 | gsap.from | static | drop zone usable from first paint; it only settles |
+| 7 | Hero | `#drop` | hover / `.over` (set by main.ts) | border ivory, `--accent-soft` bg, glyph lifts 4px | 160ms | CSS | color only | affordance |
+| 8 | Hero | `#drop` | `drop` event | radial "catch" flash from the pointer (`::after`, `--x/--y` set by nav.ts), fades | 400ms | CSS keyframe | none | confirms the drop; `run()` is never delayed |
+| 9 | Hero | `#demo`, Options, trust items | load | up, stagger 80ms | 0.5s, delay 0.55 | gsap | static | reading order; objections 2 and 6 under the ask |
+| 10 | Hero | `#field` rules + axis | load | ruled lines and the zero line clip-reveal left → right | 0.7s at 0.3 | canvas progress | static | the instrument wakes before the data |
+| 11 | Hero | `#field` intro | sample parsed and canvas ≥ 50% visible | `chrono`: dots stream in by trade index with 8ms stagger (scale 0 → 1, 140ms each); the equity line draws beneath, left → right | 1.4s | canvas + one gsap tween on `progress` | final `tradeOfDay` layout drawn once | "your log looks like noise" |
+| 12 | Hero | `#field` first sort | 0.6s after 11 | morph `chrono → tradeOfDay`; column ticks and average line draw first; labels fade in at 0.7s; caption crossfades | 1.1s `power3.inOut`, per-dot random delay ≤ 0.35s | canvas + gsap | n/a | the aha: edge and leak separate as shapes |
+| 13 | Hero | `#field` lens tour | 6s after 12, then every 6s | `time → afterPrev → stop → tradeOfDay`, then rest | 1.1s each | gsap | off; chips switch instantly | shows the engine looks through several lenses; ends so it never fights the CTA |
+| 14 | Hero | lens chips | click / Enter / Space | `aria-pressed` moves; field morphs; tour cancelled | 1.1s | gsap | instant redraw | user-driven proof |
+| 15 | Hero | field column | hover (fine pointer) / tap | column dots 100%, others 35%; label `.is-hot`; `#field-tip` "1st trade of the day: 45 trades · 73% win · +0.94% a trade" | 200ms | canvas alpha + DOM | same, no fade | numbers feel inspectable |
+| 16 | Hero | single dot | hover within 9px of a dot | that dot ringed; tip "LUMN · long · Mar 26 · +4.78% · $476" | 120ms | canvas + DOM | same | the 112 dots are 112 trades, not a graphic |
+| 17 | Hero | hero right column | scroll (scrub) | y 0 → −48px, opacity 1 → 0.4 as the hero leaves | scrub 0.5 | ScrollTrigger | off | hands attention to the story |
+| 18 | Hero | scroll cue | loop | chevron bob 6px | 1.8s | CSS keyframe | hidden | proof below |
+| 19 | Hero | `.btn-primary` in hero/dock | hover (fine pointer) | magnetic pull ≤ 8px toward the pointer | `gsap.quickTo` 0.35s | gsap | off | craft on exactly the buttons that convert |
+| 20 | Results | `#report` arrival | `#report` gains children | next frame: `body.has-report`; `.stats .stat` y 8 → 0 stagger 40ms; `.insight` cards up stagger 60ms; `.conf`/`.tag` stamps press; `.barcell .bar` scaleX 0 → 1 from the axis | 0.5s total | gsap.from on already-rendered DOM | static; `has-report` still set | directs the eye edges → leaks; never delays `render()` |
+| 21 | Results | `.stat .value` | same | count from 0 to the rendered value (6.6 parser) | 0.9s | gsap proxy | values shown immediately | numbers feel earned |
+| 22 | Results | page scroll | same, after a pick/drop/demo | `lenis.scrollTo('#report', { offset: -(nav + 16) })` | 0.9s | Lenis | native `scrollIntoView` from main.ts | the report is the payoff |
+| 23 | Results | `#report-bar`, `#report-followup` | same | fade up | 0.6s, delay 0.4 | gsap | shown immediately | the earned waitlist ask |
+| 24 | Story | h2, lede | enter once | lines / up | 0.9s / 0.64s | SplitText / gsap | static | baseline |
+| 25 | Story | `#story-stage` + rail | scroll through `.story-field` | one timeline, progress 0 → 1 over 600svh, labels `beat0..beat5` at 0, 1/6 … 5/6 | scrub 0.5 | CSS sticky + ScrollTrigger `start: 'top top', end: 'bottom bottom'` on `.story-field` | not sticky; six static figures | one frame, one idea at a time |
+| 26 | Story | captions | scrub | active caption opacity 1, y 0; others opacity 0, y ±16; rail dot fills | first 15% / last 10% of each beat | timeline | all visible, stacked | progressive disclosure |
+| 27 | Story | beat 0 | 0 → 1/6 | CSV rows translate up and dissolve (0 → 60%); dots appear in `grid` (50 → 100%); counter 232 → 112; LUMN ring + leader draws | within beat | DOM transform + canvas | static | makes "drop" concrete |
+| 28 | Story | beat 1 | 1/6 → 2/6 | dots morph `grid → curve` (0 → 45%); equity line draws L → R (30 → 85%); stat tiles count (40 → 90%); drawdown label at the trough | within beat | canvas + counters | static | the number every journal shows |
+| 29 | Story | beat 2 | 2/6 → 3/6 | edge cards slide in from x 32 stagger 0.1; as each lands its member dots grow 1.6× and ring ivory, non-members dim to 30% | within beat | DOM + canvas | static | edges in the report's own words |
+| 30 | Story | beat 3 | 3/6 → 4/6 | big number counts 37.3 → 58.5; 26 third-trade dots pulse once and stay `--neg-mark`; dashed counterfactual curve draws to +$5,583; leak cards slide in | within beat | canvas + counters | static | the money number |
+| 31 | Story | beat 4 | 4/6 → 5/6 | morph `curve → stop` (0 → 35%); the −2% line slides in from the left (35 → 50%); 33 dots left of it pop (7 as rings) (50 → 65%); those 33 slide vertically to y = −2% while the readout counts +37.3 → +13.2 (65 → 100%) | within beat | canvas + counter | static scatter with both numbers | the twist: suspect the stop, exonerate it |
+| 32 | Story | beat 5 | 5/6 → 1 | back to `curve`; top 5 dots grow to r 7 with labels; share bar fills to 65% and counts; three stamps press in order | within beat | canvas + DOM | static | honesty demonstrated, not claimed |
+| 33 | Story | rail dots | click | `lenis.scrollTo` to that beat's scroll position | 0.8s | Lenis | anchors to captions | navigation |
+| 34 | Story | `#story-end` | enter once | up | 0.6s | gsap | static | CTA at maximum belief |
+| 35 | Honest | h2, lede, formula | enter once | lines; formula characters type on (SplitText chars, stagger 0.012) | 0.9s / 0.6s | SplitText | static | the eye lands on the actual rule |
+| 36 | Honest | diagram | enter once (≥ 50% visible) | one-shot sweep: n 3 → 45 then back to the chip's n; markers slide, badge flips at 5 and 15 | 2.4s | gsap on the input value + `input` event | no sweep; slider works | feel how little 3 trades are trusted |
+| 37 | Honest | `#honest-n`, chips | input / click | marker `cx`, readout, badge, verdict update | 320ms (instant under RM) | gsap.to on `cx` | instant | user-driven proof |
+| 38 | Bento | tiles | enter once | up stagger 70ms; hairline border draws via `clip-path: inset()` | 0.64s | gsap | static | entrance rhythm |
+| 39 | Bento | tile figures (8) | `.is-visible` (IO ≥ 30%) | per-tile loop (6.3) | 2.4–4s, `repeatDelay` 1.5s | gsap timelines, paused unless visible | final frame | each feature demonstrates itself |
+| 40 | Privacy | `#privacy-wire` | `.is-visible` | pulse travels CSV → tab → report; the dashed branch and `0 requests` badge never move | 2.4s loop | SVG `stroke-dashoffset` via gsap | pulse frozen mid-path | the data path ends in the tab |
+| 41 | Privacy | checklist | enter once | up stagger 0.1 | 0.5s | gsap | static | reading order |
+| 42 | Export | tabs | click / arrow keys | panel crossfade; underline slides | 200ms | CSS | instant | friction removal |
+| 43 | Export | menu-path chips | enter once | light in sequence 1 → 2 → 3 | 1.2s | gsap | static | the path is memorable |
+| 44 | Roadmap | stepper line | scrub through `#roadmap-stepper` | ivory line fills (L → R, top → bottom on phones); nodes press in order | scrub 0.6 | ScrollTrigger + `stroke-dashoffset` | static | the analyzer is node one of a bigger thing |
+| 45 | Roadmap | `#precheck` cards | enter once | card A: chips in (x −8, 0.2s apart), rows tick in (0.1s apart), verdict stamp presses; card B the same 0.6s later | 2.6s total | gsap timeline | static | previews the paid value, red then green |
+| 46 | Roadmap | `#signup-roadmap` | enter once | up; email input focus ring glows ivory | 0.6s | gsap + CSS | static | the ask arrives after the preview |
+| 47 | Any form | submit | click | handled by `signup.ts`; message fades in | 250ms | CSS | instant | feedback |
+| 48 | FAQ | `details` | toggle | `grid-template-rows 0fr → 1fr`, `+` rotates 45° | 250ms | CSS | instant | comfort |
+| 49 | Final | h2 | enter once | lines | 0.9s | SplitText | static | baseline |
+| 50 | Final | `#final-field` | enter once | static sorted dots fade in to 35% | 0.8s | canvas, `static: true` | static | callback to the hero's proof at the last ask |
+| 51 | Dock | `#dock` | visibility rule (3.12) | translateY 24px ↔ 0, opacity | 250ms | CSS class | opacity only | conversion 1 one click away |
+| 52 | Global | `[data-count]` | enter once | count 0 → value, formatted per `data-format` | 1.1s | gsap proxy + `format.ts` | final value (already in HTML) | numbers feel real |
+| 53 | Global | links, buttons | hover | underline / background 160ms; arrow shifts 4px | 160ms | CSS | color only | affordance |
+
+Global rules: text reveals use `once: true`; scrubs exist only in rows 17, 25–32 and 44; loops only in rows 13 (bounded), 18, 39, 40, and they pause when their element is off-screen or `document.hidden`. `ScrollTrigger.refresh()` is called, debounced 100ms, after: `#report` resize (ResizeObserver), any `<details>` toggle, a tab switch, `document.fonts.ready`, orientation change.
+
+---
+
+## 5. Hero set-piece: "Same trades, sorted" (`#field`)
+
+**What it is.** A 2D-canvas beeswarm of the 112 sample trades, one dot per trade, computed by the real engine on this page, that re-sorts into the engine's own groups so the edge and the leak become visible as shapes, and, in the fourth lens, into the stop check's worst-point-vs-result scatter.
+
+**Data.** `sample.ts` (7.5) fetches `${import.meta.env.BASE_URL}sample-trades.csv` at idle (`requestIdleCallback`, fallback `setTimeout 200`), runs `parseFile → combineTrades → analyze(trades, { stopPct: 2 })` with `timeZone: 'America/New_York'`, and `tagTrades(closed)` (the new export from `analyze.ts`, 7.5) for per-trade context. Each dot: `{ i, sym, dir, date, minutes, ret, pnl, mae, mfe, labels: { tradeOfDay, time, afterPrev, direction, hold }, overnight }`. If the fetch or parse fails: draw the rules and axis only, show "The sample couldn't load. The analyzer still works: drop a file." in the caption line, hide the chips. No baked fallback data: there is one source of truth.
+
+**Canvas.** `<canvas id="field" aria-hidden="true">` inside `.field-stage` (`position: relative; aspect-ratio: 6 / 5; width: 100%`), CSS size reserved so nothing shifts. DPR capped at 2 (1.5 under 768px); `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` once per resize (`ResizeObserver`, debounced 100ms). Labels (`#field-labels`) and the tooltip (`#field-tip`) are DOM for crisp text. Colors are read from CSS custom properties at mount (`getComputedStyle(document.documentElement).getPropertyValue`).
+
+**Encoding.** y = return % on a fixed −5.5% … +7% scale (sample range −5.12 … +6.71; anything outside clamps to the edge); zero line `--line-strong` with a mono "0" and ticks at −4, −2, +2, +4, +6; ruled lines every 32px in `--rule`. Dot radius `3 + 4 · sqrt(|pnl| / 670)` (3 … 7px; ×0.75 under 768px). Fill `--pos-mark` for `ret > 0`, else `--neg-mark`, 88% alpha, 1px ring 20% darker. Groups with n < 5 render at 40% alpha and their label carries the `TOO FEW` stamp, exactly like the report.
+
+**Layouts** (`dots.ts` 6.0; each returns `{x, y, alpha, scale}` per dot; collisions dodged by sorting a column's dots by y and offsetting x in ±3.5px steps alternating sides):
+
+- `chrono`: x by trade index 0–111 across the plot width, y by return. The equity line (cumulative P&L by exit time, rescaled to the plot height, `--text-2` at 35%, 1.5px) draws beneath during the intro only.
+- `tradeOfDay`: 4 columns `1st · 2nd · 3rd · 4th or later`.
+- `time`: the 5 buckets present in the sample (`9:30–9:45 · 9:45–10:15 · 10:15–11:30 · 11:30–2:00 · 2:00–4:00`); buckets with no trades are omitted, as the engine does.
+- `afterPrev`: 4 columns `First of the day · After a win · After a loss · < 10 min after a loss`.
+- `stop`: x = worst point (`mae`) mapped over `[min(−6.5, dataMin − 0.3), 0]` (left = worst), y = return; a dashed vertical line at −2% labelled `−2% stop`; dots with `mae ≤ −2` and `ret > 0` drawn as 2px rings; a legend row replaces the column labels: `● never got near it · 79` · `○ past it, came back green · 7` · `● past it, stayed red · 26`.
+
+Each column draws a short horizontal tick at its group average (ivory, 60%) and the overall average as a dashed ivory line across the plot, so "beats the average" is literally visible. Column labels read `label · n · avg` from the engine (`1st · 45 · +0.94%`); `#field-labels` is a CSS grid with one equal cell per column.
+
+**Choreography** (rows 10–17): rules and axis reveal (0.7s) → when the sample is parsed and the canvas is ≥ 50% visible, `chrono` stream-in (1.4s) → 0.6s hold → morph to `tradeOfDay` (1.1s `power3.inOut`, per-dot random delay within 0.35s; column ticks and the average line draw first; labels fade in at 0.7s; caption h3/line crossfade 200ms) → after 6s, one tour `time → afterPrev → stop → tradeOfDay` with 6s holds → rest. The tour is cancelled by any chip click, canvas hover/tap, keyboard focus on a chip, and never runs while `#drop` has `.over` or focus, or while the pointer is over `#input` (the tour simply waits for the next tick that is clear).
+
+**Pointer.** `pointermove` hit-tests dots first (within 9px → row 16), then columns (row 15). `pointerleave` resets. Touch: tap toggles the column; tap on a dot shows its tip for 2s. `#field-sr` is updated with each lens's sentence for screen readers. No parallax (the values stay honest).
+
+**Scroll.** ScrollTrigger on `#hero` (`start: 'top top', end: 'bottom top', scrub: 0.5`) moves `.hero-field` to y −48px and opacity 0.4 as the hero leaves. No pinning.
+
+**Rendering.** One `requestAnimationFrame` loop that runs only while a tween is active, the pointer moved since the last frame, or `dirty` is set; and only while the canvas is on screen (IntersectionObserver) and `!document.hidden`. Idle cost is zero frames (acceptance 20).
+
+**Reduced motion.** `mount({ static: true })`: draws `tradeOfDay` once with labels; chips redraw instantly; tooltips work; no intro, tour or scroll effect.
+
+**Why not WebGL/three.js.** 112 dots, five layouts and two lines cost well under 1ms a frame on canvas 2D; three.js would add ~150 KB for nothing a visitor could see.
+
+---
+
+## 6. Signature set-pieces beyond the hero
+
+### 6.0 The dot system (`src/web/site/dots.ts`), shared by the hero, the story and the final band
+
+```ts
+export type LayoutId = 'chrono' | 'tradeOfDay' | 'time' | 'afterPrev' | 'stop' | 'grid' | 'curve' | 'top5';
+export interface Placed { x: number; y: number; alpha: number; scale: number; ring?: boolean }
+export interface Column { key: string; label: string; n: number; avg: number; x: number; w: number; confidence: Confidence }
+export interface Scene { pos: Placed[]; columns: Column[]; lines: Line[]; curve?: number[] /* equity y per index */; curveAlt?: number[] }
+export function layout(id: LayoutId, dots: Dot[], w: number, h: number, data: SampleData, opts: { highlight?: Set<number> }): Scene;
+export class DotField {
+  constructor(canvas: HTMLCanvasElement, data: SampleData, opts: { dpr: number; dotScale: number; static: boolean });
+  setLayout(id: LayoutId, opts?: { duration?: number; stagger?: number; onLabels?: (cols: Column[]) => void }): Promise<void>;
+  drawBlend(a: Scene, b: Scene, t: number, extras?: Extras): void;   // used by the story scrub
+  hitTest(x: number, y: number): { dot?: number; column?: Column };
+  resize(): void; destroy(): void;
+}
+```
+
+Story-only layouts: `grid` = 16 × 7 grid, r 4, `--muted`; `curve` = x by exit index, y by cumulative P&L (axis −$1,000 … +$3,500), dot color by `pnl` sign; `top5` = `curve` with the five highest-return dots at r 7 and labelled. `extras` carry the counterfactual curve, the stop line, highlight sets and dims. `drawBlend` eases the position blend with `power2.inOut` and draws lines, then dots, then rings.
+
+### 6.1 Story: "Your report, built in front of you" (`#story`, sticky scrubbed stage)
+
+Approach: CSS sticky, not a GSAP pin. `.story-field { height: 700svh }` at ≥ 1024px; `.story-sticky { position: sticky; top: var(--nav-h); height: calc(100svh - var(--nav-h)) }`. No ancestor of `.story-field` may have `transform`, `overflow: hidden/clip` or `contain` (sticky silently breaks); the story intro's reveal tween targets the intro block only. One `gsap.timeline({ paused: true })` with labels `beat0..beat5` is driven by `ScrollTrigger.create({ trigger: '.story-field', start: 'top top', end: 'bottom bottom', scrub: 0.5, onUpdate: st => tl.progress(st.progress) })`; the canvas redraws from the timeline's own `onUpdate` with the current blend (`drawBlend`). Counters use proxy objects formatted with `pct`/`money` from `src/core/format.ts` so they match the report. Overlays are real DOM, present at all times, toggled with opacity/transform only.
+
+Beat → layout: 0 `grid` (dots appear), 1 `curve`, 2 `curve` + highlight sets (members of `tradeOfDay=1st`, `time=9:30–9:45`, `direction=Long`), 3 `curve` + third-trade dots `--neg-mark` + `curveAlt` (cumulative P&L excluding `tradeOfDay === 3`, ends $5,583), 4 `stop`, 5 `top5`. Membership sets come from `tagTrades` labels; a dev assertion checks `members.size === GroupStats.n` for each.
+
+Below 1024px and in reduced motion: `story.ts` adds `.is-stacked` to `#story`, which removes the sticky and the fixed height; each `.beat-canvas[data-beat]` is drawn once with `drawInto(canvas, beat)` at the beat's end state. With motion and < 1024px, a beat canvas morphs from the previous beat's layout over 0.9s when it enters the viewport (once).
+
+### 6.2 Honest math (`#honest`): the shrinkage diagram
+
+`honest.ts` keeps `{ n, raw, label, hypothetical }` as state. `adjusted = (n * raw + 10 * overall) / (n + 10)` with `overall = report.summary.avgReturn` from the sample (0.3333…). Marker positions are linear over the −3 … +5 scale (clamped). Badge: n < 5 `few`, 5–14 `early`, ≥ 15 `solid`. Verdict, exactly mirroring `analyze.ts`:
+
+```
+if (n < 5) 'nothing, too few trades'
+else if (adj > overall && raw > 0 && raw >= overall + Math.abs(overall) / 2) 'an edge'
+else if (adj <= overall && raw < 0) 'a leak'
+else if (adj <= overall && raw < overall / 2) 'a weak spot'
+else 'nothing: not clearly away from your average'
+```
+
+(with "(early signal)" / "(solid)" appended for 5–14 / ≥ 15). Reference values the engineer must reproduce: (−1.17, 3) → −0.01% TOO FEW; (−1.17, 5) → −0.17% leak, early signal; (+4.00, 3) → +1.18% TOO FEW; (+4.00, 5) → +1.56% edge, early signal; (+4.00, 15) → +2.53% edge, solid; (+0.94, 45) → +0.83% edge, solid; (+0.94, 1) → +0.39% TOO FEW. The slider is the source of truth: the one-shot sweep (row 36) writes `input.value` and dispatches `input`; a `pointerdown`/`keydown` on the slider or a chip click kills the sweep.
+
+### 6.3 Bento micro-loops (`tiles.ts`)
+
+Each tile's figure is inline SVG shipped in its final state. `tiles.ts` builds one `gsap.timeline({ repeat: -1, repeatDelay: 1.5, paused: true })` per tile from the SVG's existing elements and plays it only while `.is-visible` (IntersectionObserver threshold 0.3) and `!document.hidden`. Loops: `edge` bar scaleX from the axis then the stamp presses (3s); `leak` counter 37.3 → 58.5 via a proxy on a `<text>` (3.6s); `stop` the line's `x` steps 1.5 → 2 → 3 with the readout text swapped (`+18.0% · +13.2% · +35.5%`) (4s); `concentration` five bars lift 4px and rings fade in, label counts to 65 (2.4s); `time` five bars scaleY with 60ms stagger (2.6s); `before` three nodes light in order, the flag blinks once (3.2s); `shown` three groups fade in muted, stamp presses (2s); `files` three sheets translate together, duplicate rows fade, the clock label swaps (3.4s). Reduced motion: timelines are not built; the SVG's shipped state is the final frame.
+
+### 6.4 Privacy wire (`#privacy-wire`)
+
+Inline SVG; the solid path has a duplicate on top with `stroke-dasharray: 40 600`; `tiles.ts` tweens `stroke-dashoffset` 640 → 0 over 2.4s, `repeat: -1`, `ease: 'none'`, while visible. The dashed branch to `Servers` and the `0 requests when you drop a file` badge never animate. RM: the pulse is set at 50% of the path.
+
+### 6.5 Pre-trade check preview (`#precheck`)
+
+`precheck.ts` binds the rows (7.3) and builds the row-45 timeline on enter (once). The roadmap stepper's line is an SVG path whose `stroke-dashoffset` is scrubbed by a ScrollTrigger on `#roadmap-stepper` (`start: 'top 80%', end: 'bottom 40%'`); nodes press at their fraction of the path.
+
+### 6.6 Report arrival (`reportMotion.ts`)
+
+A `MutationObserver` on `#report` (`childList`). On each mutation batch, on the next animation frame: if `#report` has element children, add `body.has-report`, set the `#report-bar` label from the last trigger (`sample` if the last of `#demo` click / `#files` change / `#drop` drop was `#demo`, else `own`), un-hide `#report-bar` and `#report-followup`, run rows 20–23 (only rows 22–23 when `pendingScroll` is set by one of those three triggers), then `ScrollTrigger.refresh()`. If `#report` is empty: remove `has-report`, hide both. The observer never changes report HTML and bails out of all tweens in reduced motion (it still toggles the class and the hidden attributes). A `ResizeObserver` on `#report` debounces `ScrollTrigger.refresh()` 100ms.
+
+Count-up parser for `.stat .value` (row 21): match `^([+\-−])?(\$)?([\d,]+)(?:\.(\d+))?(k|M|%)?$` on `textContent.trim()`; number = digits without commas plus decimals; tween a proxy from 0 and format with the same decimals count, thousands separators if the original had a comma, and the captured sign, `$` and suffix; on no match, leave the text alone. The final frame sets the exact original string.
+
+### 6.7 Dock and actions (`nav.ts`)
+
+`data-action="pick"`: `files.click()` synchronously in the click handler, then scroll to `#input` (Lenis `scrollTo` with offset `-(nav + 16)`, or `scrollIntoView({ block: 'start' })` in RM), then `drop.focus()` and `drop.classList.add('pulse')` for 600ms (CSS ring pulse; static ring in RM). `data-action="demo"`: `demo.click()`. `data-action="waitlist"`: scroll to `#signup-roadmap`, focus `#signup-email-2`. `data-action="help"`: open the hero `details.help`, scroll to it. `data-scroll-to="#id"`: Lenis or native scroll. Tabs: `role=tablist` keyboard pattern. Motion toggle (8.4). Second signup: `setupSignup(document.getElementById('signup-roadmap'))`; each form dispatches `signup:done` on success and the other form replaces its inputs with its `.signup-msg` text "You're on the list." The dock visibility rule is 3.12.
+
+---
+
+## 7. DOM and data contract
+
+### 7.1 Untouched analyzer contract
+
+`#files` (file input, inside `#drop`), `#drop` (`<label>`), `#tz` (`<select>`), `#stop` (`<input type=number>`), `#demo` (`<button>`), `#status` (`<p role=status>`), `#report` (`<div>`), `#signup` (`<section>` containing `form`, `input[type=email]#signup-email`, `button[type=submit]`, `.signup-msg`). Tag types and nesting assumptions in `main.ts` / `signup.ts` are preserved; **`src/web/main.ts` and `src/web/signup.ts` are not modified.** `style.css` keeps every selector the report uses (`.panel`, `.drop`, `.options`, `.help`, `.status`, `.banner`, `.stats`, `.stat`, `.label`, `.value`, `.note`, `.insights`, `.insight`, `.edge`, `.leak`, `.weak`, `.tag`, `.conf`, `.conf-*`, `.section-title`, `.dims`, `.dim`, `table`, `.num`, `tr.few`, `.barcell`, `.axis`, `.bar`, `.above`, `.below`, `.pos`, `.neg`, `.muted`, `.small`, `.signup`, `.signup-msg`, `.sr-only`) and only its token values and a few cosmetic rules change (2.5).
+
+### 7.2 New ids (all must exist)
+
+`#skip`, `#top` (on `body`'s first child wrapper), `#nav`, `#hero`, `#input` (existing section, now with the id), `#options`, `#field-wrap`, `#field-caption` (`[data-caption-title]`, `[data-caption-line]`), `#field`, `#field-labels`, `#field-tip`, `#field-sr`, `#field-lenses`, `#results`, `#report-bar`, `#report-followup`, `#story`, `#story-rail`, `#story-stage`, `#stage`, `#story-csv`, `#story-end`, `#honest`, `#honest-diagram`, `#honest-n`, `#honest-badge`, `#honest-readout`, `#honest-verdict`, `#honest-examples`, `#bento`, `#privacy`, `#privacy-wire`, `#export`, `#tab-tv`, `#tab-broker`, `#panel-tv`, `#panel-broker`, `#roadmap`, `#roadmap-stepper`, `#precheck`, `#signup-roadmap`, `#signup-email-2`, `#faq`, `#final`, `#final-field`, `#motion-toggle`, `#dock`.
+
+### 7.3 Data attributes
+
+- `data-reveal="lines|up|fade|chars"`, optional `data-reveal-delay="0.2"`, `data-reveal-stagger="0.06"`. Mounted by `motion.ts`. CSS: `.motion [data-reveal] { opacity: 0 }` only under `html.motion`.
+- `data-count="3238" data-format="int|pctInt|pct|pct1|money|fixed2"` with optional `data-count-from="37.3"`: counts on enter; the element's text already holds the formatted final value.
+- `data-sample="<path>" data-format="<fmt>"`: binds the element's text to the engine's report on the sample. The HTML ships with the same value typed in (reduced motion, no-JS and crawlers see it); `sample.ts` overwrites it after computing and, in dev (`import.meta.env.DEV`), `console.warn`s `sample drift: <path> html="…" engine="…"` on any mismatch. Paths:
+  - `summary.<field>` for every `Summary` field (`trades`, `days`, `winRate`, `avgReturn`, `avgR`, `avgWin`, `avgLoss`, `totalPnl`, `totalReturn`, `profitFactor`, `maxDrawdown`, `symbols.length`)
+  - `risk.<field>` for `RiskStats` (`pastStop`, `pastStopCameBack`, `returnWithStop`, `top5Share`, `stopPct`)
+  - `stopAt.<pct>.<field>`: `analyze` re-run at another stop (`stopAt.1.5.returnWithStop`, `stopAt.3.pastStop`)
+  - `edges.<i>.<field>` / `leaks.<i>.<field>`: `sentence` (from `insightSentence`), `phrase`, `n`, `winRate`, `avgReturn`, `confidence`, `returnWithout`, `pnlWithout`
+  - `group.<dimId>.<label>.<field>`: `GroupStats` by dimension id and the engine's exact label, e.g. `group.time.9:30–9:45.n`, `group.tradeOfDay.3rd.avgReturn`, `group.afterPrev.< 10 min after a loss.confidence`, `group.direction.Short.totalPnl`. Paths are split on `.` only at the three fixed positions (labels contain spaces, en dashes and `<`, never dots).
+  - `fills.rows` (232), `top5.<i>.symbol|returnPct|pnl`, `neverNear` (trades with `mae > −stopPct`, 79), `stayedRed` (26), `equity.end|peak|trough`.
+  - Formats: `int`, `pctInt` (`Math.round(x*100) + '%'`), `pct` (`pct(x)`), `pct1` (`pct(x, 1)`), `money` (`money(x)`), `fixed2`, `text`. After formatting, ASCII `-` becomes U+2212 `−` for marketing text (the report itself is untouched).
+- `data-lens`, `data-example` (+ `data-n`, `data-raw`, `data-label`, `data-hypothetical`), `data-beat`, `data-tile`, `data-precheck`, `data-stamp`, `data-caption-title`, `data-caption-line`, `data-report-label`, `data-visible` as described above.
+- `data-action="pick|demo|waitlist|help"` and `data-scroll-to="#id"` on any button or link (6.7).
+
+### 7.4 Boot order and the `motion` class
+
+Inline in `<head>`, before the stylesheets:
+
+```html
+<script>try{var r=matchMedia('(prefers-reduced-motion: reduce)').matches||localStorage.getItem('motion')==='off';if(!r)document.documentElement.classList.add('motion');}catch(e){}</script>
+```
+
+CSS hides reveal targets only under `html.motion` (`.motion [data-reveal]`, `.motion .overlay`, etc.); without the class everything is visible. `<link rel="modulepreload" href="./assets/motion-*.js">` cannot be known at authoring time, so `site/index.ts` imports `./motion.ts` immediately (not at idle); Vite emits it as its own chunk because it is a dynamic import. `site/index.ts` sets a 1200ms safety timer that removes `.motion` if `motion.ts` has not set `html.motion-ready`. `@media (prefers-reduced-motion: reduce) { [data-reveal], .overlay, .beat { opacity: 1 !important; transform: none !important } * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important } }` is the belt-and-braces rule. `motion.ts` also listens to the `prefers-reduced-motion` media query `change` event and calls `disable()` (8.4) when it flips to reduce.
+
+Script order in `index.html`: `<script type="module" src="/src/web/main.ts">` first (analyzer; imports only the core and `signup.ts`), then `<script type="module" src="/src/web/site/index.ts">`. Module scripts execute in document order, so the analyzer binds before any site code runs; the site chunk never imports `main.ts`. Section modules are lazy-imported by `index.ts` when their section is within 150% of the viewport (IntersectionObserver `rootMargin: '150% 0px'`), except `heroField.ts`, `reportMotion.ts` and `nav.ts`, which load with `motion.ts`.
+
+### 7.5 File layout
+
+```
+index.html                         new structure; every id in 7.2; the head script in 7.4; both module scripts; both stylesheets
+src/web/main.ts                    UNCHANGED
+src/web/signup.ts                  UNCHANGED
+src/web/style.css                  analyzer + report styles; tokens replaced by section 2.2; selectors kept
+src/web/site.css                   marketing layout, components (2.5), keyframes, reveal initial states, reduced-motion rules, lenis css import
+src/web/site/index.ts              boot: safety timer, import('./motion.ts'), lazy section imports, exposes nothing global
+src/web/site/motion.ts             gsap + ScrollTrigger + SplitText registration, Lenis (gsap.ticker driven), gsap.matchMedia contexts
+                                   ('(prefers-reduced-motion: no-preference)', '(min-width: 1024px)'), reveal()/count() utilities,
+                                   refresh() debounce, enable()/disable(), the reduced-motion change listener
+src/web/site/sample.ts             getSample(): fetch + parse + analyze once (memoised promise), tagTrades, stopAt map, equity series,
+                                   membership sets, bindSampleNumbers(root), dev drift warning
+src/web/site/dots.ts               layouts + DotField (6.0); no DOM beyond the canvas
+src/web/site/heroField.ts          hero canvas (section 5): intro, tour, chips, labels, tooltips, scroll exit, final-band reuse
+src/web/site/story.ts              sticky stage timeline / stacked beat canvases (6.1)
+src/web/site/honest.ts             shrinkage diagram, chips, slider, sweep (6.2)
+src/web/site/tiles.ts              bento loops + privacy pulse, IntersectionObserver gating (6.3, 6.4)
+src/web/site/precheck.ts           roadmap stepper scrub + pre-check timeline (6.5)
+src/web/site/reportMotion.ts       MutationObserver + ResizeObserver on #report (6.6)
+src/web/site/nav.ts                stuck nav, data-action / data-scroll-to delegation, dock, tabs, FAQ refresh hooks, motion toggle,
+                                   drop catch flash, second setupSignup, signup:done
+src/core/analyze.ts                + export `tagTrades(closed: Trade[]): TaggedTrade[]` (additive; see below)
+src/core/parsers/fills.ts          Step 0
+scripts/make-sample.py             Step 0
+public/sample-trades.csv           regenerated by Step 0
+test/engine.test.ts                + Step 0 test
+test/site.test.ts                  new: (a) tagTrades group counts == engine GroupStats.n for every dimension;
+                                   (b) every data-sample in index.html equals the engine value after formatting (regex over the HTML,
+                                   U+2212 normalised to '-'); (c) the honest-math reference values in 6.2
+README.md                          + one line (0.3)
+package.json                       unchanged (gsap, lenis already present)
+```
+
+`tagTrades` (additive export in `analyze.ts`, no behavior change): returns, per closed trade in the engine's order, `{ trade, date, minutes, weekday, tradeOfDay, prev, holdMin, overnight, labels: { time, tradeOfDay, afterPrev, direction, hold } }`, where `labels.*` are the matching bucket labels computed with the same `Bucket.test` functions the dimensions use. Implement it by reusing `withContext` and the bucket arrays; do not duplicate the bucket boundaries anywhere else.
+
+Every site module exports `mount(ctx: { gsap; ScrollTrigger; mm: gsap.MatchMedia; reduced: boolean; lenis: Lenis | null; sample: Promise<SampleData> }): { destroy(): void }`. `destroy()` kills the module's tweens and triggers and leaves its DOM in the static final state.
+
+---
+
+## 8. Performance plan
+
+### 8.1 Budgets (gzipped transfer unless noted; measured sizes in the preamble)
+
+- JS total ≤ 100 KB target, 110 KB hard cap: analyzer entry (`main.ts` + core + `signup.ts`) ≤ 12 KB; `site/index.ts` ≤ 3 KB; motion vendor chunk (gsap core 28.3 + ScrollTrigger 18.0 + SplitText 3.7 + Lenis 8.3 = 58.3 KB); site modules combined ≤ 25 KB. No CustomEase, DrawSVG, Flip, ScrollSmoother, ScrambleText (not needed; keep them out of the bundle).
+- CSS ≤ 20 KB gz (`style.css` + `site.css` + `lenis.css`).
+- Fonts ≤ 200 KB (184 KB measured). `preconnect` to both Google hosts; `display=swap`; the fallback `@font-face` metrics in 2.3.
+- Zero raster images, zero video. All illustrations inline SVG; the hero and story are canvas.
+- Sample CSV: ~11 KB raw after Step 0, fetched once at idle; the `#demo` fetch hits the HTTP cache (same URL string).
+- Targets (Lighthouse mobile, simulated 4G, built site): Performance ≥ 90, Accessibility ≥ 95, LCP (the h1) < 2.5s, CLS < 0.05, TBT < 150ms, INP < 200ms. Every canvas, figure and stage has its size reserved in CSS (`aspect-ratio` or `min-height`) so nothing shifts when modules mount.
+
+### 8.2 Loading
+
+1. HTML + CSS + preconnects; fonts swap in.
+2. `main.ts` executes: the drop zone, options and sample button are live before any site code.
+3. `site/index.ts` executes: safety timer; `import('./motion.ts')` starts immediately; `nav.ts`, `reportMotion.ts`, `heroField.ts` mount when it resolves; `sample.ts` starts its fetch at idle.
+4. Section modules lazy by proximity (7.4). The story module waits for `getSample()`.
+5. Nothing awaits the analyzer, and the analyzer awaits nothing.
+
+### 8.3 Runtime
+
+Canvas: DPR cap 2 (1.5 under 768px); `setTransform` once per resize; draw only on `dirty`; rAF stops when off-screen or hidden; final-band canvas renders exactly once. ScrollTrigger: `ScrollTrigger.config({ ignoreMobileResize: true, limitCallbacks: true })`; no pins; scrubbed properties are transform / opacity / `stroke-dashoffset` / canvas progress / text only. Lenis: `new Lenis({ lerp: 0.1, smoothWheel: true, syncTouch: false, autoRaf: false, anchors: { offset: -72 } })`, `lenis.on('scroll', ScrollTrigger.update)`, `gsap.ticker.add(t => lenis.raf(t * 1000))`, `gsap.ticker.lagSmoothing(0)`; never `ScrollSmoother` or `ScrollTrigger.normalizeScroll`. `content-visibility: auto` with `contain-intrinsic-size` on `#faq` and `footer` only (never on sections carrying ScrollTriggers). `will-change` is applied by GSAP during tweens only. SplitText is applied to at most 30 elements; `autoSplit: true` handles resize, and each `onSplit` returns its tween so SplitText can revert it. Loops gated by IntersectionObserver and `visibilitychange`.
+
+### 8.4 Reduced motion plan (complete; applies to `prefers-reduced-motion: reduce` and to `motion=off`)
+
+1. `html.motion` is never added, so no element starts hidden or offset; every reveal target, overlay, stamp, badge and figure is in its final state at first paint.
+2. `motion.ts` is still imported (for `data-action`, the dock, tabs and the toggle) but creates no Lenis, no ScrollTrigger, no SplitText; the `no-preference` matchMedia context never runs.
+3. Hero field: static `tradeOfDay` render, instant lens switching, tooltips work, no intro/tour/scroll effect.
+4. Story: `.is-stacked`; six beat canvases drawn once; all captions and overlays visible.
+5. Honest math: no sweep; slider and chips update instantly.
+6. Bento and privacy: shipped SVG state; no timelines built.
+7. Report arrival: no count-ups or staggers; `has-report`, the bar and the followup still show; the scroll is `main.ts`'s native one.
+8. Anchors and `data-scroll-to` use native `scrollIntoView({ behavior: 'auto' })`; the drop pulse is a static focus ring; the dock toggles opacity only.
+9. The footer toggle. **Off** (from on): store `motion=off`, then `disable()`: `ScrollTrigger.getAll().forEach(t => t.kill())`, each module's `destroy()`, `splits.forEach(s => s.revert())`, `gsap.globalTimeline.clear()`, `lenis?.destroy()`, remove `html.motion`, set `html[data-motion=off]`, `gsap.set('[data-reveal], .overlay, .beat', { clearProps: 'all' })`; the page is then in state 1–8 without a reload. **On** (from off): store `motion=on`; if `#report` is empty, `location.reload()`; otherwise set the button text to "Motion: on next load" so the visitor's report is not lost. Button label reflects `aria-pressed`.
+10. The `prefers-reduced-motion` media query `change` to `reduce` calls `disable()` live (no store); a change back to `no-preference` does nothing until the next load.
+
+---
+
+## 9. Mobile plan (375px, 16px gutter)
+
+- `html, body { overflow-x: clip }` as a backstop only; nothing may rely on it. Every canvas and SVG is `width: 100%` with a `viewBox` or `aspect-ratio`; `#story-csv` is `overflow: hidden; white-space: pre`; report tables keep their own `overflow-x: auto` panel; chip rows scroll inside their container with `scroll-snap-type: x mandatory`; SplitText masks are `overflow: hidden`. No element is wider than `100vw − 32px`.
+- Nav 56px: logo + "Waitlist" button; section links in the footer; skip link kept.
+- Hero: single column in the order of 3.1; h1 42px / 0.98; primary = "See the sample report" (56px, full width); `#drop` = 56px full-width secondary "Choose my CSV files" (still the `<label for="files">`; `.over` stays meaningful only for desktop drag); Options collapsed; trust row 2×2; the field is a 240px band after the CTAs (DPR 1.5, dots ×0.75, labels shortened to `label · n`, avg moves into the tap tooltip); the tour still runs but stops on first tap; the sample button is within the first 600px.
+- Reveals: `lines` is replaced by `up` under 768px (no SplitText on phones) except the hero h1.
+- Story: `.is-stacked`; each beat = caption, 4:3 canvas (343×257), overlay; stat tiles as a 3×2 grid of two-line tiles; edge/leak cards show the full sentence; the share bar and legend wrap; no rail.
+- Honest math: diagram full width 300px tall; slider 44px thumb target; chips in a horizontal snap row; one-shot sweep still plays on enter (with motion).
+- Bento: one column (two from 600px); figures 96px; at most the two most-centered tiles loop at once.
+- Privacy wire 240px tall above the checklist. Export tabs full width. Roadmap stepper vertical with a 24px left rail; pre-check cards stacked; forms stack input over button, both full width.
+- Dock: 64px bottom bar with `env(safe-area-inset-bottom)`; `main { padding-bottom: 80px }` at ≤ 767px; hidden while an input has focus (keyboard-aware) and under the other rules in 3.12.
+- Lenis uses native touch scrolling (`syncTouch: false`); there are no pins anywhere, so iOS address-bar resizes cannot jump content; `ScrollTrigger.config({ ignoreMobileResize: true })` stays on. An iPad in landscape (≥ 1024px, touch) gets the sticky story like desktop; it is CSS sticky, so it is safe.
+- Tap targets ≥ 44px; the report tables remain the existing horizontally scrollable panels (bar column hidden under 560px, as today).
+
+---
+
+## 10. Acceptance checklist
+
+1. **Fold, desktop.** Screenshots at 1280×720, 1366×768 and 1440×900 on a fresh load: the eyebrow, the h1 on exactly two lines, the lede, the drop zone, the "See the sample report" button and the four trust items are visible without scrolling, and the canvas on the right shows dots.
+2. **Fold, phone.** Screenshot at 375×667: `document.documentElement.scrollWidth === 375`, gutters are 16px, the "See the sample report" button is fully visible within the first viewport.
+3. **Step 0.** Section 0.4 passes in full (byte-identical first six CSV columns, the 14 unchanged report lines, the RISK line, 9/9 tests, typecheck).
+4. **Hero sort.** Within 4s of load at 1440×900 the canvas has gone from a chronological scatter to four labelled columns; the "3rd" column's dots sit visibly lower than the "1st" column's; labels read "1st · 45 · +0.94%" and "3rd · 26 · −0.81%".
+5. **Hero tour ends.** Without interaction the lens changes at most four times after the first sort and then stays on "Trade # of the day" (wait 40s, lens unchanged). Any chip click or canvas hover stops it (wait 15s after, lens unchanged).
+6. **Hero tooltips.** Hovering the "3rd" column shows "26 trades · 42% win · −0.81% a trade"; hovering a dot shows a symbol, direction, date, return and P&L for a real sample trade (e.g. "LUMN · long · Mar 26 · +4.78% · $476"); clicking "Your stop" shows the −2% line with legend counts 79 / 7 / 26.
+7. **Sample report.** Clicking "See the sample report" renders `#report` within 500ms of the fetch resolving; the page scrolls to it; the six stat values count up and end at 112 / 61% / +0.33% / +1.53% / $3,238 / −$1,686; the stop panel reads "33 of 112 trades went more than 2% against you at some point; 7 of them came back green. Closing every one of them at −2% would have made your total +13.2% instead of +37.3%"; `#report-bar` says "Sample report · 112 fictional trades…"; `#report-followup` is visible below the report.
+8. **Own file.** Dropping any fills CSV onto `#drop` renders a report with `#report-bar` reading "Your report · computed in this tab · nothing uploaded"; in the Performance panel no GSAP frame runs between the `drop` event and the `#report` mutation; changing `#stop` to 3 on the sample report shows "+35.5% instead of +37.3%".
+9. **Report cleared.** A file with no closed trades empties `#report`, removes `body.has-report` and hides `#report-bar` and `#report-followup`.
+10. **No upload.** With the Network panel open, dropping a file produces zero new requests; going offline after load and dropping a file still produces a report; the only requests on a fresh load are the page, CSS, JS chunks, Google Fonts CSS and woff2 files, and `sample-trades.csv`.
+11. **Reduced motion.** With `prefers-reduced-motion: reduce` emulated: no element has `opacity: 0` after load, `html` has no `motion` class, there is no Lenis instance, the story shows six stacked figures with all captions readable, the honest-math slider updates instantly, `document.getAnimations().length === 0` after 2s, and the analyzer works.
+12. **Toggle.** The footer "Motion: off" produces the same state as item 11 without a reload and keeps a rendered report on screen; the preference survives a reload; "Motion: on" reloads when no report is on screen.
+13. **No JS.** With scripting disabled the page is readable top to bottom (every headline, number, caption, card, stamp and FAQ answer visible), the drop label opens the file picker, and both waitlist forms post to Buttondown in a new tab.
+14. **Story scrub.** Scrolling through `#story` at 1440×900 keeps the stage under the nav for about six viewports; beats appear in order; at beat 1 the curve ends at $3,238; at beat 3 the big number reads exactly "+37.3% → +58.5%" and the three leak cards match the CLI sentences (U+2212 for minus); at beat 4 exactly 33 dots sit left of the −2% line, 7 of them rings, and the readout ends at +13.2%; at beat 5 five labelled dots and a 65% bar.
+15. **Rail.** Clicking the six rail dots scrolls to each beat; the URL does not change.
+16. **Honest math.** Default chip, slider at 3: "adjusted −0.01%", badge TOO FEW; at 5: EARLY SIGNAL and "a leak"; at 15: SOLID. "3 lucky trades at +4.00%": +1.18% TOO FEW; at 5 → +1.56% "an edge (early signal)"; at 15 → +2.53% "an edge (solid)". "1st trade of the day" at 45 → +0.83%.
+17. **Color discipline.** Green and red appear only on P&L values, bars, trade dots, EDGE/LEAK tags, edge/leak cards and pre-check verdicts; buttons, links, focus rings, stamps, the privacy pulse and the roadmap line are ivory; weak spots and "too few" are graphite/hatch. No amber anywhere.
+18. **Contrast.** `--muted` on `--bg` ≥ 4.5:1, `--bg` on `--text` (buttons) ≥ 4.5:1, measured with the DevTools picker; all body text AA.
+19. **Budgets.** Built site: JS ≤ 110 KB gz (target 100), CSS ≤ 20 KB gz, fonts ≤ 200 KB, no image requests; Lighthouse mobile Performance ≥ 90, Accessibility ≥ 95, CLS < 0.05.
+20. **Idle cost.** Scrolled to the FAQ, the Performance panel shows no `heroField` frames and every bento timeline is paused; hero rAF resumes when scrolled back.
+21. **Drift.** `npm test` runs `test/site.test.ts` and it passes; in dev the console shows no "sample drift" warning; every number in the hero captions, story overlays, bento notes and pre-check rows equals the CLI output.
+22. **Waitlist.** Submitting the roadmap form with a valid email shows "You're on the list. Check your inbox to confirm your email." and the Network panel shows exactly one POST to buttondown.com containing only the email field; the contextual form behaves identically; after one succeeds the other shows "You're on the list."
+23. **Keyboard.** Tab from the top reaches the skip link, the nav waitlist button, the drop zone (Enter opens the picker), the sample button, Options, the lens chips (Enter/Space switch), the rail dots, the honest-math chips and slider (arrow keys change n), the export tabs (arrow keys), every FAQ summary, both email inputs and the motion toggle; focus rings are visible on all of them.
+24. **No fake proof.** No testimonials, user counts, press or partner logos; "TradingView" appears only as text naming a supported export; every statistic on the page is a product rule from `analyze.ts` or a sample number labelled fictional.
+25. **Resize.** Rotating a phone portrait → landscape → portrait, opening three FAQ items, and rendering the sample report above the story leave the story stage aligned with its beats on desktop (refresh fired) and no horizontal scroll at any width.
+26. **Dock.** At 1440×900 the dock appears once `#input` scrolls out and hides at `#report-followup`, `#signup-roadmap`, `#final` and when a report exists; its "Drop your CSV" opens the OS picker in one click and scrolls back to the drop zone.
+27. **Subpath.** `npm run build && npx vite preview --base /mytradepilot/` serves a working site: fonts, `sample-trades.csv`, the motion chunk and the lazy section chunks all load with relative URLs.
+
+---
+
+## 11. Build notes for the engineer
+
+**Build order (do it in this order; cut from the bottom of the cut list, never from the top of this one):** (1) Step 0 and its test. (2) `index.html` + `style.css` retarget + `site.css`: the whole page must read complete with scripting off before any animation code exists. (3) `site/index.ts`, `motion.ts`, `nav.ts` (actions, dock, tabs, toggle, second signup), `reportMotion.ts`. (4) `sample.ts` + `tagTrades` + `test/site.test.ts`. (5) `dots.ts` + `heroField.ts`. (6) `story.ts`. (7) `honest.ts`, `precheck.ts`. (8) `tiles.ts`. (9) final-band canvas, magnetic buttons, drop catch flash. **Cut list, in order:** magnetic buttons → bento loops (ship the static SVGs) → privacy pulse → final-band canvas → hero per-dot tooltip (keep the column tooltip) → hero "Your stop" lens (keep three) → story beat 5 (its content is already in the bento). Never cut: the hero sort, story beats 0–4, honest math, report followup, dock, reduced-motion correctness.
+
+Gotchas:
+
+1. **Lenis + GSAP ticker.** Exactly one loop: `autoRaf: false`, `gsap.ticker.add(t => lenis.raf(t * 1000))`, `gsap.ticker.lagSmoothing(0)`, `lenis.on('scroll', ScrollTrigger.update)`. Import `lenis/dist/lenis.css` from `site.css`. Do not set a `scrollerProxy`, do not use ScrollSmoother or `normalizeScroll`. Lenis 1.3 uses native scroll, so `position: sticky` and `main.ts`'s `scrollIntoView` keep working.
+2. **The report scroll.** `main.ts` calls `reportEl.scrollIntoView({ behavior: 'smooth' })` synchronously after `run()`. The MutationObserver callback runs as a microtask after that, so calling `lenis.scrollTo(reportEl, { offset: -(navH + 16), duration: 0.9 })` there takes over the native smooth scroll (browsers cancel a smooth scroll when another programmatic scroll starts). Only do it when `pendingScroll` was set by `#files` change, `#drop` drop or `#demo` click; a `#tz`/`#stop` re-render must not scroll. Test in Safari and Chrome.
+3. **SplitText.** Import from `gsap/SplitText` (3.13+ is free). Use `SplitText.create(el, { type: 'lines', mask: 'lines', autoSplit: true, onSplit: self => gsap.from(self.lines, {...}) })` and return the tween from `onSplit` so `autoSplit` can revert and re-split on resize/font swap. Wait for `document.fonts.ready` (race it against a 500ms timeout) before the first split, or lines split on fallback metrics and re-wrap on swap. Keep masks `overflow: hidden` and never put `data-reveal="lines"` on an element with a `::before` rule.
+4. **ScrollTrigger refresh.** Call `ScrollTrigger.refresh()` (debounced 100ms) on `document.fonts.ready`, on every `details` `toggle` (the hero help details changes the hero's height), on tab switches, on `orientationchange`, and from the `ResizeObserver` on `#report` (a 3000px report lands above every trigger). `ScrollTrigger.config({ ignoreMobileResize: true, limitCallbacks: true })`.
+5. **Sticky.** `position: sticky` breaks silently under any ancestor with `transform`, `overflow` other than `visible`, or `contain`. The story intro's reveal must target the intro block, not the section; `#story` gets no `overflow: clip`; `content-visibility: auto` only on `#faq` and `footer`.
+6. **Canvas.** Cap DPR at 2 (1.5 under 768px); size the backing store on resize only; `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)`; clear with `clearRect` in CSS pixels; redraw only on a `dirty` flag; stop the rAF when the canvas leaves the viewport or `document.hidden`. Read colors from CSS custom properties; never hard-code hex in TS.
+7. **Sample URL.** Use the identical string `main.ts` uses: `` `${import.meta.env.BASE_URL}sample-trades.csv` ``. With `base: './'` it resolves to `./sample-trades.csv`, relative to the page, so it works at the GitHub Pages subpath; the second fetch hits the cache. Never `/sample-trades.csv`.
+8. **`base: './'`.** All asset references in `index.html` must be relative (Vite rewrites `/src/...` script tags, but hand-written `href`s to `/` would break under the subpath). Verify with acceptance 27.
+9. **Untouched ids.** `files`, `drop`, `tz`, `stop`, `demo`, `status`, `report`, `signup` (and `signup-email`) keep their tags and nesting; `#tz` and `#stop` inside `<details>` are still in the DOM at load, which is all `main.ts` needs. Do not edit `main.ts` or `signup.ts`; if something seems to require it, the spec has another way.
+10. **TypeScript settings.** `verbatimModuleSyntax` → `import type { … }` for types; `erasableSyntaxOnly` → no enums, namespaces or parameter properties; `allowImportingTsExtensions` → import with `.ts` extensions, including from `test/site.test.ts`, which runs under `node --test` with type stripping, so it must also avoid non-erasable syntax.
+11. **Step 0 details.** `exc = random.Random(11)` must be a separate RNG; keep the condition's `exc.random()` before the branch's `gauss`. The `Worst %` on a closing fill is stored negative (`-Math.abs`), matching the TradingView parser. Open positions keep `mae/mfe` of their fills; `finish()` with `exitTime === null` is unchanged otherwise.
+12. **Count-ups.** Only on `.stat .value` and `[data-count]`; the parser in 6.6; set the exact original string on complete; never run before the first paint of the rendered report (next animation frame).
+13. **`has-report` lifecycle.** `main.ts` sets `reportEl.innerHTML = ''` when no closed trades are found; the observer must handle removal as well as insertion.
+14. **Two signup forms.** `setupSignup` un-hides the section it is given and binds its `form`; give the second form its own `label for`, `input id`, `button` and `.signup-msg`. Buttondown de-duplicates by email, but mark both forms done after one success anyway.
+15. **Hero density.** The h1 cap is 76px with `max-width: 12ch`; if it wraps to three lines at 1280 or 1366 wide, lower the cap, do not widen the column. The works-with line lives inside the help details; keep it there.
+16. **Lens tour politeness.** Never start a morph while `#drop` has focus or `.over`, or while the pointer is inside `#input`; cancel the tour on any interaction; cap it at one tour.
+17. **Color discipline.** Reusing `.pos`/`.neg` for decorative states is the easiest way to fail acceptance 17; the drop flash, pulse, privacy pulse, stepper line and stamps are ivory.
+18. **Dev drift check.** `sample.ts`'s `bindSampleNumbers` compares the typed HTML to the computed value in `import.meta.env.DEV` and warns; `test/site.test.ts` makes the same check fail the build. When Step 0 regenerates the sample, re-run the CLI and update the typed numbers; the test tells you which.
+19. **Idle work.** `requestIdleCallback` is missing in Safari: `const idle = window.requestIdleCallback ?? (cb => setTimeout(cb, 200))`.
+20. **Buttondown.** `signup.ts` posts with `mode: 'no-cors'`; the response is opaque; the success message is shown on fetch resolution, which is the existing behavior and must not change.
