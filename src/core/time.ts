@@ -89,3 +89,27 @@ export function marketClock(d: Date): MarketClock {
     weekday: w.weekday,
   };
 }
+
+/** The instant the New York calendar day of `ts` ends (next NY midnight). */
+export function endOfMarketDay(ts: number): number {
+  const w = wallClock(ts, MARKET_TZ);
+  const sinceMidnight = (w.h * 60 + w.mi) * 60000 + w.s * 1000 + (ts % 1000);
+  let candidate = ts - sinceMidnight + 24 * 3600000;
+  // Re-check across a DST change: nudge until the wall clock reads 00:00.
+  for (let i = 0; i < 3; i++) {
+    const c = wallClock(candidate, MARKET_TZ);
+    if (c.h === 0 && c.mi === 0) break;
+    candidate -= (c.h * 60 + c.mi) * 60000;
+  }
+  return candidate;
+}
+
+/** Minutes since NY midnight for a "HH:MM" string, or null if malformed. */
+export function parseClock(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
