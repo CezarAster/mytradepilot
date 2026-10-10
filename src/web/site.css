@@ -389,7 +389,7 @@ html.motion .signup-band { animation: pulse 6s ease-in-out infinite; }
 .footer .wrap { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
 .footer p + p { margin-top: 6px; }
 .footer .brand { font-size: 15px; }
-.footer .mono-line { font: 500 11px/1.4 var(--font-mono); letter-spacing: .06em; color: var(--muted-2); margin-top: 14px; }
+.footer .mono-line { font: 500 11px/1.4 var(--font-mono); letter-spacing: .06em; color: var(--muted); margin-top: 14px; }
 .footer nav { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 .footer nav a, .footer button { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 .footer nav a:hover, .footer button:hover { color: var(--text); }
