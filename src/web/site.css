@@ -482,6 +482,7 @@ html:not(.js) .push-chip { position: static; align-self: flex-start; margin-top:
 
 /* why: three cited findings */
 .why { background: var(--bg-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.story + .why { border-top: 0; }
 .cites { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .cite { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; min-width: 0; }
 .cite .big { font: 400 40px/1 var(--font-display); color: var(--text); letter-spacing: -.01em; }
