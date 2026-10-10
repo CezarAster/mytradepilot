@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyTradePilot" color="#5cc8ef">
+  <rect x="12.5" y="12.5" width="39" height="39" rx="4" transform="rotate(45 32 32)" fill="none" stroke="currentColor" stroke-width="3.2"/>
+  <path d="M14 41 L23.5 31.5 L29.5 37.5 L45.75 18.25" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="45.75" cy="18.25" r="3.8" fill="currentColor"/>
+</svg>
