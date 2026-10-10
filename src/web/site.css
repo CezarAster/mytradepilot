@@ -693,7 +693,7 @@ html.motion .story-steps .step.active { opacity: 1; }
   .frame-clock { font-size: 11px; }
   .push-chip { font-size: 10px; padding: 5px 8px; top: -11px; right: 8px; }
   .story-card p { font-size: 13px; }
-  .invite-text { min-height: 150px; }
+  .invite-text { min-height: 176px; }
   .bento { grid-template-columns: 1fr; gap: 14px; }
   .tile { min-height: 0; padding: 18px; }
   .chip-row { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; margin-inline: calc(-1 * var(--gutter)); padding-inline: var(--gutter); }
