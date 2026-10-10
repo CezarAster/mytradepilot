@@ -11,7 +11,7 @@ import { marketClock } from '../core/time.ts';
 import type { Trade } from '../core/types.ts';
 import { combineTrades, parseFile } from '../core/parsers/index.ts';
 import { isValidTimeZone } from '../core/time.ts';
-import { LiveEngine } from '../engine/live.ts';
+import { LiveEngine, fmtTime } from '../engine/live.ts';
 import type { Breach, Declaration, EngineEvent, Fill, LiveSnapshot, RuleSet } from '../engine/types.ts';
 import { checkSetup } from '../strategy/setup.ts';
 import type {
@@ -351,7 +351,7 @@ export class Referee {
         case 'lock':
           if (mode !== 'history') {
             this.persistDayState();
-            const a = this.store.insertAction({ time: this.now(), kind: 'lock', symbol: null, breachId: null, detail: `Locked until ${new Date(e.until).toISOString()}: ${e.reason}`, ok: true });
+            const a = this.store.insertAction({ time: this.now(), kind: 'lock', symbol: null, breachId: null, detail: `Locked until ${fmtTime(e.until)} ET: ${e.reason}`, ok: true });
             this.emit({ type: 'action', action: a });
             void this.notifier.send('Referee: locked out', e.reason);
           }
