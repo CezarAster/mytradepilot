@@ -5,6 +5,7 @@ const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US
 const CLOCK = fmt({ hour: 'numeric', minute: '2-digit', second: '2-digit' });
 const SHORT_CLOCK = fmt({ hour: 'numeric', minute: '2-digit' });
 const DATE_TIME = fmt({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const MONTH_DAY = fmt({ month: 'short', day: 'numeric' });
 const LOCAL_DATE = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
 const valid = (ts: number) => Number.isFinite(ts) && ts > 0;
@@ -25,6 +26,13 @@ export function timeET(ts: number, seconds = true): string {
 export function dateTimeET(ts: number): string {
   if (!valid(ts)) return '';
   return `${DATE_TIME.format(new Date(ts))} ET`;
+}
+
+/** "Oct 10, 10:41:12 AM ET" for log lines, where seconds matter. */
+export function dateClockET(ts: number): string {
+  if (!valid(ts)) return '';
+  const d = new Date(ts);
+  return `${MONTH_DAY.format(d)}, ${CLOCK.format(d)} ET`;
 }
 
 /** A "YYYY-MM-DD" trading date as "Fri, Oct 10, 2026". Falls back to the input. */

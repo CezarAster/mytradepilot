@@ -172,7 +172,9 @@ export class Referee {
         this.broadcastSnapshot();
       },
       onLive: () => {
-        void this.reconcile(this.everLive ? 'reconnect' : 'first-live').catch((e) => this.log.error('sync after connect failed', e));
+        void this.reconcile(this.everLive ? 'reconnect' : 'first-live').catch((e) => {
+          if (!this.stopped) this.log.error('sync after connect failed', e);
+        });
         this.everLive = true;
       },
     };
@@ -191,9 +193,10 @@ export class Referee {
 
   private async doReconcile(reason: string): Promise<void> {
     const client = this.client;
-    if (!client) return;
+    if (!client || this.stopped) return;
     const now = this.now();
     const acct = await client.getAccount();
+    if (this.stopped) return;
     this.account = { equity: Number(acct.equity), cash: Number(acct.cash), buyingPower: Number(acct.buying_power), status: acct.status, daytradeCount: acct.daytrade_count };
     const known = this.store.getKv('alpaca_account_id');
     if (known && known !== acct.id) this.log.warn(`this data file was built from account ${known.slice(0, 8)} but the keys belong to ${acct.id.slice(0, 8)}; set MYTRADEPILOT_HOME to a new folder for a new account`);
@@ -203,6 +206,7 @@ export class Referee {
     const last = this.store.lastFillTime();
     const after = last === null ? undefined : new Date(last - 2 * 86400000).toISOString();
     const activities = await client.allFillsSince(after);
+    if (this.stopped) return;
     const fresh: Fill[] = [];
     for (const a of activities) {
       const f = fillFromActivity(a);
@@ -218,6 +222,7 @@ export class Referee {
 
     // Working orders, so stops placed while we were away count.
     const open = await client.listOrders({ status: 'open', nested: true });
+    if (this.stopped) return;
     for (const o of open) {
       for (const snap of orderSnapshots(o)) {
         this.store.upsertOrder(snap);
@@ -241,6 +246,7 @@ export class Referee {
   /** Marks and unrealized P&L from Alpaca's positions list; also flags positions we cannot account for. */
   private async refreshPositions(client: AlpacaClient, verbose: boolean): Promise<void> {
     const positions = await client.listPositions();
+    if (this.stopped) return;
     const marks: Record<string, number> = {};
     const ours = new Set(this.engine.openPositions().map((p) => p.symbol));
     for (const p of positions) {
