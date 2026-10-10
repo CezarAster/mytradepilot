@@ -98,6 +98,20 @@ export interface AnalyzeOptions {
   stopPct: number;
 }
 
+/** One closed trade with the context the report groups it by, plus the bucket labels it falls into. */
+export interface TaggedTrade {
+  trade: Trade;
+  date: string;
+  minutes: number;
+  weekday: string;
+  tradeOfDay: number;
+  prev: 'first' | 'win' | 'loss' | 'quick-after-loss';
+  holdMin: number;
+  overnight: boolean;
+  /** The engine's own group labels for this trade, one per mined or shown dimension. */
+  labels: { time: string | null; tradeOfDay: string | null; afterPrev: string | null; direction: string | null; hold: string | null };
+}
+
 interface Ctx {
   t: Trade;
   date: string;
@@ -247,6 +261,30 @@ function maxDrawdown(closed: Trade[]): number {
     dd = Math.min(dd, equity - peak);
   }
   return dd;
+}
+
+const labelOf = (buckets: Bucket[], c: Ctx): string | null => buckets.find((b) => b.test(c))?.label ?? null;
+
+/** Tags every closed trade with the same context and bucket labels the report uses (engine order). */
+export function tagTrades(trades: Trade[]): TaggedTrade[] {
+  const closed = trades.filter((t) => t.exitTime !== null);
+  return withContext(closed).map((c) => ({
+    trade: c.t,
+    date: c.date,
+    minutes: c.minutes,
+    weekday: c.weekday,
+    tradeOfDay: c.tradeOfDay,
+    prev: c.prev,
+    holdMin: c.holdMin,
+    overnight: c.overnight,
+    labels: {
+      time: labelOf(TIME_BUCKETS, c),
+      tradeOfDay: labelOf(TRADE_OF_DAY, c),
+      afterPrev: labelOf(AFTER_PREV, c),
+      direction: labelOf(DIRECTION, c),
+      hold: labelOf(HOLD, c),
+    },
+  }));
 }
 
 export function analyze(trades: Trade[], opts: AnalyzeOptions): Report {

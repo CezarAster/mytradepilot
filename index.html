@@ -3,71 +3,608 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MyTradePilot: Free Trade Analyzer</title>
-    <meta name="description" content="Find out which of your trades actually make money. Free, and your trades never leave your computer." />
+    <title>MyTradePilot: free trade analyzer that finds your edge, in your browser</title>
+    <meta name="description" content="MyTradePilot is a free trade analyzer that runs entirely in your browser: drop in a TradingView or broker export and see where you make money, where you give it back, and what your stop is doing. Step one of the pre-trade check that keeps you inside your edge." />
+    <meta property="og:title" content="MyTradePilot: free trade analyzer that finds your edge, in your browser" />
+    <meta property="og:description" content="MyTradePilot is a free trade analyzer that runs entirely in your browser: drop in a TradingView or broker export and see where you make money, where you give it back, and what your stop is doing. Step one of the pre-trade check that keeps you inside your edge." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0A0C10" />
+    <script>(function(){var h=document.documentElement;h.classList.add('js');try{var off=false;try{off=localStorage.getItem('motion')==='off'}catch(e){}if(matchMedia('(prefers-reduced-motion: no-preference)').matches&&!off)h.classList.add('motion');}catch(e){}window.__booted=false;setTimeout(function(){if(!window.__booted){h.classList.remove('motion');h.classList.add('motion-failed');}},2000);})();</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="/src/web/style.css" />
+    <link rel="stylesheet" href="/src/web/site.css" />
   </head>
   <body>
-    <nav class="brand"><span class="logo" aria-hidden="true">◆</span> MyTradePilot</nav>
-    <header class="hero">
-      <p class="eyebrow">Free trade analyzer</p>
-      <h1>Find out which of your trades actually make money.</h1>
-      <p class="lede">Drop in your trade export. In a few seconds you'll see your real edges, your leaks, and what your stop is doing for you.</p>
-      <p class="privacy">🔒 Runs entirely in your browser. Your trades are never uploaded.</p>
+    <a id="skip" class="sr-only-focusable" href="#drop">Skip to analyzer</a>
+
+    <svg id="pilot" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="pilot-glow" x="-200%" y="-200%" width="500%" height="500%">
+          <feGaussianBlur stdDeviation="4" result="b" />
+          <feMerge><feMergeNode in="b" /><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      <g id="pilot-tail"></g>
+      <g id="pilot-g" style="opacity:0">
+        <circle r="11" fill="rgba(91,156,255,.14)" />
+        <path d="M0 -7 L7 0 L0 7 L-7 0 Z" fill="#5B9CFF" filter="url(#pilot-glow)" />
+      </g>
+    </svg>
+
+    <header class="nav" id="top">
+      <div class="wrap">
+        <div class="nav-lead">
+          <a class="brand" href="#top" data-scroll-to><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="currentColor" /></svg>MyTradePilot</a>
+          <span class="nav-tag">The honest trade analyzer. Free, in your browser, nothing uploaded.</span>
+        </div>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="#story" data-scroll-to>How it works</a>
+          <a href="#method" data-scroll-to>Methodology</a>
+          <a href="#roadmap" data-scroll-to>Roadmap</a>
+        </nav>
+        <div class="nav-actions">
+          <button type="button" class="btn btn-secondary" id="nav-sample" data-action="demo">Try the sample</button>
+          <a class="btn btn-primary" href="#signup" id="nav-join" data-scroll-to>Join the waitlist</a>
+        </div>
+      </div>
     </header>
 
     <main>
-      <section class="panel" id="input">
-        <label class="drop" id="drop">
-          <input type="file" id="files" accept=".csv,text/csv" multiple hidden />
-          <strong>Drop CSV files here</strong>
-          <span>or click to choose. Several files at once are fine; duplicates are removed.</span>
-        </label>
-
-        <div class="options">
-          <label>
-            Time zone of your export
-            <select id="tz"></select>
-          </label>
-          <label>
-            Your usual stop (%)
-            <input type="number" id="stop" value="2" min="0.1" max="50" step="0.1" />
-          </label>
-          <button type="button" id="demo" class="link">Try it with sample trades</button>
+      <section class="hero" id="hero" aria-label="Free trade analyzer">
+        <div class="hero-river" id="hero-river">
+          <canvas id="hero-canvas" aria-hidden="true"></canvas>
+          <span class="hero-end" id="hero-end" data-pilot-anchor="hero" aria-hidden="true"></span>
+          <div class="hero-labels" id="hero-labels" aria-hidden="true"></div>
         </div>
-        <details class="help">
-          <summary>Which files work?</summary>
-          <ul>
-            <li><b>TradingView</b>: Bar Replay or Strategy Tester → List of trades → Export (CSV). Use your chart's time zone above.</li>
-            <li><b>Any broker</b>: an executions/fills export with columns for symbol, side, quantity, price and time. Fills are matched into round-trip trades automatically.</li>
-          </ul>
-        </details>
+        <div class="hero-scrim" aria-hidden="true"></div>
+        <div class="hero-tooltip" id="hero-tooltip" aria-hidden="true"></div>
+        <p class="hero-caption mono-label" id="hero-caption" aria-hidden="true">Sample report · <span data-sample="summary.trades" data-format="int">112</span> fictional trades · computed in your browser</p>
+        <p id="hero-sr" class="sr-only">The sample trader's equity curve: <span data-sample="summary.trades" data-format="int">112</span> fictional trades, trough <span data-sample="equity.trough" data-format="money">−$774</span>, peak <span data-sample="equity.peak" data-format="money">$3,441</span>, end <span data-sample="equity.end" data-format="money">$3,238</span>.</p>
+
+        <div class="wrap hero-inner">
+          <div class="hero-text">
+            <p class="eyebrow" data-hero>Free trade analyzer · Runs in your browser</p>
+            <h1 data-split="words" data-hero-split>Drop in your trades. Watch your <em>edge</em> show up.</h1>
+            <p class="lede" data-hero>Drop a TradingView or broker export. In seconds you see where you make money, where you give it back, and what your stop is really doing. Free, runs 100% in your browser, your trades are never uploaded.</p>
+            <div class="hero-ctas" data-hero>
+              <button type="button" class="btn btn-primary" id="cta-drop" data-action="pick" data-magnetic><span class="cta-desktop">Drop your CSV</span><span class="cta-mobile">Choose my CSV files</span></button>
+              <button type="button" class="btn btn-secondary" id="cta-sample" data-action="demo" data-magnetic>Run the sample report</button>
+            </div>
+          </div>
+
+          <section class="console" id="input" aria-label="Analyzer" data-hero>
+            <div class="wb-head">
+              <h2>Analyzer</h2>
+              <span class="mchip"><i class="dot"></i>runs locally</span>
+              <span class="spacer"></span>
+              <div class="file-card" id="file-card" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 3h9l6 6v16H7z" /><path d="M16 3v6h6M10 14h9M10 18h9M10 22h6" /></svg>
+                <div><b id="file-card-name">Sample trades (fills).csv</b><span id="file-card-meta"><span data-sample="fills.rows" data-format="int">232</span> rows · <span data-sample="fills.kb" data-format="int">12</span> KB</span></div>
+              </div>
+            </div>
+            <label class="drop" id="drop" for="files">
+              <input type="file" id="files" accept=".csv,text/csv" multiple hidden />
+              <strong>Drop CSV files here</strong>
+              <span>or click to choose. Several files at once are fine; duplicates removed, partial fills merged.</span>
+            </label>
+            <div class="options">
+              <label>Time zone of your export <select id="tz"></select></label>
+              <label>Your usual stop (%) <input type="number" id="stop" value="2" min="0.1" max="50" step="0.1" /></label>
+            </div>
+            <div class="wb-foot">
+              <button type="button" id="demo" class="btn-ghost">Run the sample report</button>
+              <details class="help" id="help">
+                <summary>Which files work?</summary>
+                <ul>
+                  <li><b>TradingView</b>: Bar Replay or Strategy Tester → List of trades → Export (CSV). Use your chart's time zone above.</li>
+                  <li><b>Any broker</b>: an executions/fills export with columns for symbol, side, quantity, price and time. Fills are matched into round-trip trades automatically.</li>
+                  <li><b>Stop check</b>: runs when the export carries each trade's worst point. TradingView's does; a fills export can add a <code>Worst %</code> column on the closing fill.</li>
+                </ul>
+              </details>
+              <p class="trust-line">Open DevTools and watch the Network tab: nothing leaves. Turn Wi-Fi off after the page loads and it still works.</p>
+              <p id="status" class="status" role="status"></p>
+            </div>
+          </section>
+        </div>
       </section>
 
-      <p id="status" class="status" role="status"></p>
-      <div id="report"></div>
-
-      <section class="panel signup" id="signup" hidden>
-        <div>
-          <h2>Get your edge checked before every trade</h2>
-          <p>
-            The full MyTradePilot app is coming: a pre-trade check that tells you if a setup matches where you make money,
-            live alerts for your best setups, and an AI review of your week. Join the waitlist for early access and founding-member pricing.
-          </p>
+      <section id="results" class="results" aria-label="Your report">
+        <div class="wrap">
+          <div id="report-bar" class="report-bar" hidden><span class="mono-label" data-report-label>Your report · computed in this tab · nothing uploaded</span><a href="#top" data-scroll-to class="btn-ghost">Back to top ↑</a></div>
+          <div id="report"></div>
+          <div id="report-followup" class="report-followup" hidden>
+            <div class="followup-copy">
+              <p class="eyebrow">Next step</p>
+              <h2 class="display-2">That's your report. The full app uses it <em>before</em> you trade.</h2>
+              <p class="lede">MyTradePilot is building the rest: a journal that keeps this report current, a pre-trade check that tells you if a setup matches where you make money, live alerts for your best setups, and an AI review of your week. Join the waitlist for early access and founding-member pricing.</p>
+              <a href="#drop" data-scroll-to class="btn-ghost">Analyze another file ↑</a>
+            </div>
+            <section class="signup-mini" id="signup-report" hidden aria-label="Waitlist">
+              <form class="signup-form" novalidate>
+                <label for="signup-email-2" class="sr-only">Email address</label>
+                <input type="email" id="signup-email-2" required autocomplete="email" placeholder="you@example.com" />
+                <button type="submit" class="btn btn-primary">Join the waitlist</button>
+              </form>
+              <p class="signup-msg" role="status"></p>
+              <p class="small-print">We only get your email address, never your trades. Unsubscribe anytime.</p>
+            </section>
+          </div>
         </div>
-        <form novalidate>
-          <label for="signup-email" class="sr-only">Email address</label>
-          <input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com" />
-          <button type="submit">Join the waitlist</button>
-        </form>
-        <p class="signup-msg" role="status"></p>
-        <p class="muted small">We only get your email address, never your trades. Unsubscribe anytime.</p>
+      </section>
+
+      <section class="trust" id="trust" aria-label="What is true about this tool">
+        <div class="wrap">
+          <ul>
+            <li class="trust-item" data-reveal>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2" /><path d="M6 8V6a3 3 0 016 0v2" /></svg>
+              <div><strong>Nothing uploaded</strong>the file is read by this tab and never sent anywhere; refresh and it is gone.</div>
+            </li>
+            <li class="trust-item" data-reveal data-reveal-delay=".08">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="9" r="7" /><path d="M5.5 9.5l2.5 2.5 4.5-5" /></svg>
+              <div><strong>Free, no account</strong>no sign-up to see your report.</div>
+            </li>
+            <li class="trust-item" data-reveal data-reveal-delay=".16">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 4L2 9l4 5M12 4l4 5-4 5" /></svg>
+              <div><strong><a href="https://github.com/CezarAster/mytradepilot" rel="noopener" target="_blank">Open methodology</a></strong>the engine and its tests are public; small groups are shrunk toward your average.</div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section numbers" id="numbers">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Sample report</p>
+            <h2 class="display-2" data-split="lines">Here is the sample report, computed live on this page.</h2>
+          </div>
+          <div class="grid">
+            <div class="counter" data-reveal>
+              <div class="val"><span class="num" data-counter="112" data-counter-format="int" data-sample="summary.trades" data-format="int">112</span></div>
+              <p class="lbl">trades</p>
+            </div>
+            <div class="counter" data-reveal data-reveal-delay=".08">
+              <div class="val"><span class="num" data-counter="61" data-counter-format="pct0" data-sample="summary.winRate" data-format="pctInt">61%</span></div>
+              <p class="lbl">win rate</p>
+            </div>
+            <div class="counter" data-reveal data-reveal-delay=".16">
+              <div class="val"><span class="pilot-slot" id="num-pilot" data-pilot-anchor="numbers" aria-hidden="true"></span><span class="num pos" data-counter="37.3" data-counter-format="pct1" data-sample="summary.totalReturn" data-format="pct1">+37.3%</span></div>
+              <p class="lbl">summed return</p>
+            </div>
+            <div class="counter" data-reveal data-reveal-delay=".24">
+              <div class="val"><span class="num" data-counter="1.45" data-counter-format="dec2" data-sample="summary.profitFactor" data-format="fixed2">1.45</span></div>
+              <p class="lbl">profit factor</p>
+            </div>
+          </div>
+          <p class="caption small muted" data-reveal>Sample trades are fictional (public/sample-trades.csv). Your own numbers appear the moment you drop a file.</p>
+          <p class="footnote" data-reveal>A fictional trader. The patterns are real because the engine found them, not because we drew them.</p>
+          <a class="slim" href="#signup" data-scroll-to data-reveal>Want this before every trade? <span>Join the waitlist →</span></a>
+        </div>
+      </section>
+
+      <section class="story" id="story">
+        <div class="wrap story-stage">
+          <div class="story-head section-head">
+            <p class="eyebrow" data-reveal>How it works</p>
+            <h2 class="display-2" data-split="lines">From fills to verdict in four scrolls.</h2>
+          </div>
+          <figure class="story-frame" id="story-frame" aria-label="Sample report walkthrough">
+            <div class="frame-head">
+              <span class="mono-label">Sample · <span data-sample="summary.trades" data-format="int">112</span> <span class="ph-hide">fictional </span>trades</span>
+              <span class="states" id="story-states" aria-hidden="true"><span class="pilot-slot" id="frame-pilot" data-pilot-anchor="frame"></span><i class="on"></i><i></i><i></i><i></i></span>
+            </div>
+            <div class="frame-stage" id="frame-stage">
+              <pre class="story-csv" id="story-csv" aria-hidden="true"></pre>
+              <div class="lanes" id="story-lanes" aria-hidden="true">
+                <div class="lane" data-lane="1"><div class="lane-lbl"><b>1st</b><small><span data-sample="group.tradeOfDay.1st.n" data-format="int">45</span> trades · <span data-sample="group.tradeOfDay.1st.winRate" data-format="pctInt">73%</span> win</small></div><i class="zero"></i><i class="bar"></i><span class="bar-val" data-sample="group.tradeOfDay.1st.avgReturn" data-format="pct">+0.94%</span></div>
+                <div class="lane" data-lane="2"><div class="lane-lbl"><b>2nd</b><small><span data-sample="group.tradeOfDay.2nd.n" data-format="int">38</span> trades · <span data-sample="group.tradeOfDay.2nd.winRate" data-format="pctInt">58%</span> win</small></div><i class="zero"></i><i class="bar"></i><span class="bar-val" data-sample="group.tradeOfDay.2nd.avgReturn" data-format="pct">+0.44%</span></div>
+                <div class="lane" data-lane="3"><div class="lane-lbl"><b>3rd</b><small><span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span> trades · <span data-sample="group.tradeOfDay.3rd.winRate" data-format="pctInt">42%</span> win</small></div><i class="zero"></i><i class="bar neg"></i><span class="bar-val neg" data-sample="group.tradeOfDay.3rd.avgReturn" data-format="pct">−0.81%</span></div>
+                <div class="lane" data-lane="4"><div class="lane-lbl"><b>4th+</b><small><span data-sample="group.tradeOfDay.4th or later.n" data-format="int">3</span> trades · <span data-sample="group.tradeOfDay.4th or later.confidence">too few</span></small></div><i class="zero"></i><i class="bar neg"></i><span class="bar-val neg" data-sample="group.tradeOfDay.4th or later.avgReturn" data-format="pct">−0.29%</span></div>
+              </div>
+              <div class="story-chips" id="story-chips" aria-hidden="true"></div>
+              <div class="story-card" id="story-card">
+                <span class="tag"><span class="vdot" id="story-dot" data-pilot-anchor="story"></span>Leak <span class="conf pill solid" data-sample="leaks.0.confidence">solid</span></span>
+                <p data-sample="leaks.0.base">Your 3rd trade of the day: 26 trades, 42% win, −0.81% a trade vs +0.33% overall.</p>
+                <div class="verdict"><span class="big num" id="story-counter" data-sample="leaks.0.returnWithout" data-format="pct1">+58.5%</span><small>total if you skip them<br />instead of <span data-sample="summary.totalReturn" data-format="pct1">+37.3%</span></small></div>
+              </div>
+            </div>
+          </figure>
+          <div class="story-steps" id="story-steps">
+            <div class="step active" data-story-step="1" data-n="1"><h3>It reads your fills.</h3><p>Any broker CSV with symbol, side, quantity, price, time. TradingView trade lists too. Fills are matched into round trips, duplicates dropped.</p></div>
+            <div class="step" data-story-step="2" data-n="2"><h3>It tags every trade.</h3><p>New York entry time, trade number of the day, what came before, hold time, direction, weekday, ticker.</p></div>
+            <div class="step" data-story-step="3" data-n="3"><h3>It finds where the money is.</h3><p>Your 1st trade of the day: <span data-sample="edges.0.n" data-format="int">45</span> trades, <span data-sample="edges.0.winRate" data-format="pctInt">73%</span> win, <span data-sample="edges.0.avgReturn" data-format="pct">+0.94%</span> a trade vs <span data-sample="summary.avgReturn" data-format="pct">+0.33%</span> overall. Solid.</p></div>
+            <div class="step" data-story-step="4" data-n="4"><h3>And where it leaks.</h3><p>Your 3rd trade of the day: <span data-sample="leaks.0.n" data-format="int">26</span> trades, <span data-sample="leaks.0.winRate" data-format="pctInt">42%</span> win, <span data-sample="leaks.0.avgReturn" data-format="pct">−0.81%</span> a trade. Skipping them would have made your total <span data-sample="leaks.0.returnWithout" data-format="pct1">+58.5%</span> instead of <span data-sample="summary.totalReturn" data-format="pct1">+37.3%</span>.</p></div>
+            <p class="story-cta" data-reveal><button type="button" class="btn btn-secondary" id="story-run" data-action="pick">Run this on your trades</button></p>
+            <p class="footnote" data-reveal>Hold time is shown but never mined: winners get held longer because they are winning.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section features" id="features">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>The report</p>
+            <h2 class="display-2" data-split="lines">Six questions the report answers.</h2>
+          </div>
+          <div class="bento">
+            <article class="tile" data-reveal>
+              <div class="loop" data-loop="edges" aria-hidden="true">
+                <svg viewBox="0 0 220 100"><line class="avg" x1="62" y1="6" x2="62" y2="94" />
+                  <text x="8" y="31">1st</text><rect class="b b1" x="62" y="20" width="140" height="14" rx="3" fill="#2EBF77" />
+                  <text x="8" y="56">9:30</text><rect class="b b2" x="62" y="45" width="118" height="14" rx="3" fill="#2EBF77" />
+                  <text x="8" y="81">LONG</text><rect class="b b3" x="62" y="70" width="70" height="14" rx="3" fill="#2EBF77" />
+                </svg>
+              </div>
+              <p class="eyebrow">Edges</p><h3>Where you make money.</h3><p>Groups that clearly beat your average, ranked by impact.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".08">
+              <div class="loop" data-loop="leaks" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <text x="8" y="31">3RD</text><rect class="drain" x="62" y="20" width="90" height="14" rx="3" fill="#E5534B" />
+                  <text x="8" y="70">TOTAL</text><rect class="total" x="62" y="59" width="150" height="14" rx="3" fill="#2EBF77" />
+                  <text class="t-before" x="62" y="90" fill="#8A93A0">+37.3%</text><text class="t-after" x="62" y="90" style="fill:#3DD68C">+58.5% if skipped</text>
+                </svg>
+              </div>
+              <p class="eyebrow">Leaks</p><h3>Where you give it back.</h3><p>Money-losing patterns first, then profitable-but-weak ones.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".16">
+              <div class="loop" data-loop="stop" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <line class="stopline" x1="12" y1="72" x2="208" y2="72" stroke-width="1.5" /><text x="150" y="86">STOP −2%</text>
+                  <path class="path" d="M12 40 C40 42 50 60 70 66 S95 82 110 76 S140 40 165 30 S195 22 208 18" />
+                </svg>
+              </div>
+              <p class="eyebrow">Stop</p><h3>What your stop is doing.</h3><p>Trades that went past your stop and came back vs. not, and your total if every one had been closed at the stop. On the sample: <span data-sample="risk.pastStop" data-format="int">33</span> went past −<span data-sample="risk.stopPct" data-format="int">2</span>%, <span data-sample="risk.pastStopCameBack" data-format="int">7</span> came back green; a hard 2% stop would have made <span data-sample="risk.returnWithStop" data-format="pct1">+13.2%</span> instead of <span data-sample="summary.totalReturn" data-format="pct1">+37.3%</span>.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".24">
+              <div class="loop" data-loop="conc" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <circle class="ring-bg" cx="52" cy="50" r="34" /><circle class="ring" cx="52" cy="50" r="34" />
+                  <text x="52" y="54" text-anchor="middle" style="font-size:14px;fill:#F3F5F7;letter-spacing:0" data-sample="risk.top5Share" data-format="pctInt">65%</text>
+                  <g><circle class="dot" cx="120" cy="50" r="8" /><circle class="dot" cx="142" cy="50" r="8" /><circle class="dot" cx="164" cy="50" r="8" /><circle class="dot" cx="186" cy="50" r="8" /><circle class="dot" cx="208" cy="50" r="8" /></g>
+                  <text x="120" y="78">5 BEST TRADES</text>
+                </svg>
+              </div>
+              <p class="eyebrow">Concentration</p><h3>How much rides on five trades.</h3><p>In the sample, the 5 best trades made <span data-sample="risk.top5Share" data-format="pctInt">65%</span> of the total.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".32">
+              <div class="loop" data-loop="break" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <rect class="col" style="--a:.5;--b:.9;--c:.4" x="14" y="10" width="20" height="66" rx="2" />
+                  <rect class="col" style="--a:.6;--b:.3;--c:.75" x="42" y="10" width="20" height="66" rx="2" />
+                  <rect class="col" style="--a:.95;--b:.5;--c:.55" x="70" y="10" width="20" height="66" rx="2" />
+                  <rect class="col" style="--a:.3;--b:.6;--c:.9" x="98" y="10" width="20" height="66" rx="2" />
+                  <rect class="col" style="--a:.4;--b:.2;--c:.35" x="126" y="10" width="20" height="66" rx="2" />
+                  <rect class="col" style="--a:.7;--b:.8;--c:.6" x="154" y="10" width="20" height="66" rx="2" />
+                  <rect class="col" style="--a:.55;--b:.45;--c:.8" x="182" y="10" width="20" height="66" rx="2" />
+                  <text class="cap c1" x="14" y="92">BY WEEKDAY</text><text class="cap c2" x="14" y="92">BY ENTRY TIME</text><text class="cap c3" x="14" y="92">BY HOLD TIME</text>
+                </svg>
+              </div>
+              <p class="eyebrow">Breakdowns</p><h3>When, how often, after what.</h3><p>Entry time, trade number of the day, after a loss, quick re-entry, hold time, symbol, weekday.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".4">
+              <div class="loop" data-loop="files" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <rect class="file" style="--dx:-62px;--r:-8deg;--ex:-6px" x="80" y="18" width="52" height="64" rx="5" />
+                  <rect class="file" style="--dx:0px;--r:0deg;--ex:0px" x="80" y="18" width="52" height="64" rx="5" />
+                  <rect class="file" style="--dx:62px;--r:8deg;--ex:6px" x="80" y="18" width="52" height="64" rx="5" />
+                  <text x="106" y="54" text-anchor="middle" style="fill:#C3C9D2">CSV</text>
+                  <text class="badge" x="150" y="54" style="fill:#5B9CFF">112 TRADES</text>
+                </svg>
+              </div>
+              <p class="eyebrow">Many files</p><h3>Drop them all.</h3><p>Overlapping exports are de-duplicated, partial fills merged.</p>
+            </article>
+          </div>
+          <p class="footnote" data-reveal>Ticker and weekday are shown but never mined: too easy to fool yourself.</p>
+          <p class="after-grid" data-reveal><button type="button" class="btn-ghost" data-action="demo">Run it on the sample →</button></p>
+        </div>
+      </section>
+
+      <section class="section lab shrink-lab" id="shrink-lab" aria-label="Shrinkage rule">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Honest statistics</p>
+            <h2 class="display-2" data-split="lines">Three <em>lucky</em> trades are not an edge.</h2>
+            <p class="lede" data-reveal>Every group's average is shrunk toward your overall average in proportion to how few trades it has. The fewer the trades, the less the engine believes them. Here is the exact rule, on the sample.</p>
+          </div>
+          <div class="lab-grid shrink-grid">
+            <div class="lab-copy">
+              <div class="formula-card" data-reveal>
+                <p class="formula mono" id="shrink-formula">adjusted = (n × group avg + 10 × overall avg) ÷ (n + 10)</p>
+                <p class="small muted">10 is the number of phantom average trades mixed into every group.</p>
+              </div>
+              <div class="chip-row" id="shrink-examples" role="group" aria-label="Examples from the sample" data-reveal>
+                <button type="button" class="mchip" data-example="t945" data-n="3" data-raw="-1.17" data-label="9:45–10:15 ET" aria-pressed="true">9:45–10:15 ET · <span data-sample="group.time.9:45–10:15.n" data-format="int">3</span> trades · raw <span data-sample="group.time.9:45–10:15.avgReturn" data-format="pct">−1.17%</span></button>
+                <button type="button" class="mchip" data-example="lucky" data-n="3" data-raw="4" data-label="3 lucky trades" data-hypothetical aria-pressed="false">3 lucky trades at +4.00%</button>
+                <button type="button" class="mchip" data-example="hold15" data-n="5" data-raw="1.07" data-label="Held under 15 min" aria-pressed="false">Held under 15 min · <span data-sample="group.hold.Under 15 min.n" data-format="int">5</span> trades · raw <span data-sample="group.hold.Under 15 min.avgReturn" data-format="pct">+1.07%</span></button>
+                <button type="button" class="mchip" data-example="overnight" data-n="5" data-raw="-2.55" data-label="Overnight" aria-pressed="false">Overnight · <span data-sample="group.hold.Overnight.n" data-format="int">5</span> trades · raw <span data-sample="group.hold.Overnight.avgReturn" data-format="pct">−2.55%</span></button>
+                <button type="button" class="mchip" data-example="first" data-n="45" data-raw="0.94" data-label="1st trade of the day" aria-pressed="false">1st trade of the day · <span data-sample="group.tradeOfDay.1st.n" data-format="int">45</span> trades · raw <span data-sample="group.tradeOfDay.1st.avgReturn" data-format="pct">+0.94%</span></button>
+              </div>
+              <ul class="rules" data-reveal>
+                <li>Every group's average is shrunk toward your overall average: adjusted = (n × group average + 10 × overall average) ÷ (n + 10). Ten phantom average trades are mixed into every group.</li>
+                <li>Under 5 trades: too few. Faded in every table, never called an edge or a leak. 5 to 14: early signal. 15 or more: solid.</li>
+                <li>An edge needs its shrunk average above your overall average, a positive plain average, and a plain average at least half again above your overall (your average plus half of it).</li>
+                <li>A leak is a group that loses money: its plain average is negative. A weak spot is profitable but averages under half of your overall average.</li>
+              </ul>
+              <p data-reveal><a class="btn-ghost" href="https://github.com/CezarAster/mytradepilot/blob/main/src/core/analyze.ts" rel="noopener" target="_blank">Read the rule in src/core/analyze.ts →</a></p>
+              <p class="footnote" data-reveal>Shrinkage makes the report quieter than your spreadsheet. That is the point.</p>
+            </div>
+            <div class="lab-figure" data-reveal>
+              <div class="figure-panel">
+                <svg id="shrink-diagram" viewBox="0 0 560 320" role="img" aria-label="Number line showing a group's raw average pulled toward the overall average">
+                  <defs>
+                    <pattern id="shrink-grid" width="46.667" height="40" patternUnits="userSpaceOnUse"><path d="M46.667 0V40M0 40H46.667" fill="none" stroke="rgba(243,245,247,.05)" stroke-width="1" /></pattern>
+                  </defs>
+                  <rect width="560" height="320" fill="url(#shrink-grid)" />
+                  <g id="shrink-axis" class="axis-g"></g>
+                  <line id="shrink-avg-line" x1="0" y1="80" x2="0" y2="196" stroke="#C3C9D2" stroke-width="1" stroke-dasharray="3 3" />
+                  <text id="shrink-avg-label" x="0" y="66" text-anchor="middle" class="svg-mono">your average +0.33%</text>
+                  <path id="shrink-tether" d="" fill="none" stroke="#5B9CFF" stroke-width="1" opacity=".7" />
+                  <circle id="shrink-raw" cx="0" cy="180" r="7" fill="none" stroke="#8A93A0" stroke-width="1.5" />
+                  <text id="shrink-raw-label" x="0" y="207" text-anchor="middle" class="svg-mono">raw</text>
+                  <circle id="shrink-adj" cx="0" cy="180" r="7" fill="#5B9CFF" />
+                  <text id="shrink-adj-label" x="0" y="150" text-anchor="middle" class="svg-mono accent">what the report says</text>
+                </svg>
+                <p class="readout mono" id="shrink-readout"><span id="shrink-readout-text">n = 3 · raw −1.17% · adjusted −0.01%</span> <span class="pill few" id="shrink-badge">few</span></p>
+                <p class="verdict-line" id="shrink-verdict">The report would call this: nothing, too few trades.</p>
+              </div>
+              <div class="slider-row">
+                <label for="shrink-n">Trades in this group</label>
+                <input type="range" id="shrink-n" min="1" max="45" step="1" value="3" />
+                <output class="bubble mono" id="shrink-n-out" for="shrink-n">3</output>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section lab stop-lab" id="stop-lab" aria-label="Stop check">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Your stop</p>
+            <h2 class="display-2" data-split="lines">Your stop, <em>replayed.</em></h2>
+            <p class="lede" data-reveal>Every trade's worst point is checked against your stop. Three things can happen. On the sample, <span data-sample="risk.pastStop" data-format="int">33</span> trades went more than <span data-sample="risk.stopPct" data-format="int">2</span>% against this trader and <span data-sample="risk.pastStopCameBack" data-format="int">7</span> of them came back green. Closing every one at −2% would have made <span data-sample="risk.returnWithStop" data-format="pct1">+13.2%</span> instead of <span data-sample="summary.totalReturn" data-format="pct1">+37.3%</span>. The stop isn't the leak. The third trade is.</p>
+          </div>
+          <div class="lab-grid stop-grid">
+            <div class="lab-figure" data-reveal>
+              <div class="figure-panel stop-panel">
+                <svg id="stop-figure" viewBox="0 0 640 320" role="img" aria-label="Three price paths against a 2% stop: never near it, past it and back, past it and stayed red">
+                  <line x1="40" y1="96" x2="600" y2="96" stroke="#344050" stroke-width="1" />
+                  <text x="40" y="86" class="svg-mono">entry</text>
+                  <g id="stop-line-g">
+                    <line x1="40" y1="192" x2="600" y2="192" stroke="#8A93A0" stroke-width="1" stroke-dasharray="4 4" />
+                    <text x="600" y="184" text-anchor="end" class="svg-mono">−2% stop</text>
+                  </g>
+                  <path data-stop-path="none" d="M40 96 C120 112 160 142 230 128 S330 70 400 80 S530 44 600 29" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" />
+                  <path data-stop-path="back" data-seg="1" d="M40 96 C100 100 150 150 210 196 S270 246 300 245" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" />
+                  <path data-stop-path="back" data-seg="2" d="M300 245 C340 244 380 170 440 130 S550 62 600 53" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" />
+                  <path data-stop-path="stay" d="M40 96 C110 100 170 150 260 192 S420 262 500 276 S570 300 600 298" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" />
+                  <text x="604" y="33" class="svg-mono pos">+1.4%</text>
+                  <text x="604" y="57" class="svg-mono pos">+0.9%</text>
+                  <text x="604" y="302" class="svg-mono neg">−4.2%</text>
+                </svg>
+              </div>
+            </div>
+            <div class="lab-copy stop-copy">
+              <ul class="stop-rows" data-reveal>
+                <li class="stop-row"><span class="lbl">Never got near it</span><span class="count num" data-count="79" data-sample="neverNear" data-format="int">79</span></li>
+                <li class="stop-row"><span class="lbl">Went past it, came back green</span><span class="count num" data-count="7" data-sample="risk.pastStopCameBack" data-format="int">7</span></li>
+                <li class="stop-row"><span class="lbl">Went past it, stayed red</span><span class="count num" data-count="26" data-sample="stayedRed" data-format="int">26</span></li>
+              </ul>
+              <div class="ladder mono" id="stop-ladder" data-reveal>
+                <div class="cell"><span class="k">1.5% →</span><span class="v" data-count="18.0" data-count-from="37.3" data-sample="stopAt.1.5.returnWithStop" data-format="pct1">+18.0%</span></div>
+                <div class="cell"><span class="k">2% →</span><span class="v" data-count="13.2" data-count-from="37.3" data-sample="risk.returnWithStop" data-format="pct1">+13.2%</span></div>
+                <div class="cell"><span class="k">3% →</span><span class="v" data-count="35.5" data-count-from="37.3" data-sample="stopAt.3.returnWithStop" data-format="pct1">+35.5%</span></div>
+              </div>
+              <p class="ladder-line" data-reveal>All three below <span data-sample="summary.totalReturn" data-format="pct1">+37.3%</span>. The <span data-sample="risk.pastStopCameBack" data-format="int">7</span> that came back made +<span data-sample="cameBackPoints" data-format="fixed2">16.25</span> points between them; the <span data-sample="stayedRed" data-format="int">26</span> that stayed red made <span data-sample="stayedRedPoints" data-format="fixed2">−58.12</span>.</p>
+              <p class="small muted" data-reveal>Needs worst-point data: TradingView exports include it; a fills export can add a Worst % column on the closing fill. Your usual stop in the analyzer above re-runs this on your file.</p>
+              <p class="footnote" data-reveal>A tighter stop is not automatically better. The check reports what yours did, not what a rule says.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section method" id="method">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Methodology</p>
+            <h2 class="display-2" data-split="lines">Nothing to take on faith.</h2>
+          </div>
+          <div class="cols">
+            <div data-reveal><span class="mono small">src/core · test/</span>Open engine: src/core, tests in test/.</div>
+            <div data-reveal data-reveal-delay=".08"><span class="mono small">% per trade</span>Unit is % return per trade, so results compare across sizes.</div>
+            <div data-reveal data-reveal-delay=".16"><span class="mono small">n &lt; 5 → faded</span>Groups under 5 trades are faded; nothing under 5 is ever called an edge or a leak.</div>
+          </div>
+          <div class="proof">
+            <div class="figure-panel wire-panel" data-reveal>
+              <svg id="privacy-wire" viewBox="0 0 560 300" role="img" aria-label="Your CSV goes to this browser tab, which produces your report; no path leads to a server">
+                <g class="wire-node" transform="translate(16,112)"><rect width="110" height="56" rx="8" /><text x="55" y="33" text-anchor="middle">Your CSV</text></g>
+                <g class="wire-node tab" transform="translate(190,96)"><rect width="180" height="88" rx="8" /><text x="90" y="38" text-anchor="middle">This browser tab</text><text x="90" y="60" text-anchor="middle" class="sub">(engine runs here)</text></g>
+                <g class="wire-node" transform="translate(434,112)"><rect width="110" height="56" rx="8" /><text x="55" y="33" text-anchor="middle">Your report</text></g>
+                <path id="wire-path" d="M126 140 L190 140 M370 140 L434 140" fill="none" stroke="#5B9CFF" stroke-width="1.5" />
+                <path id="wire-pulse" d="M126 140 L190 140 M370 140 L434 140" fill="none" stroke="#7FB4FF" stroke-width="3" stroke-linecap="round" stroke-dasharray="40 600" stroke-dashoffset="640" />
+                <path d="M280 184 L280 236" fill="none" stroke="#344050" stroke-width="1.5" stroke-dasharray="4 4" />
+                <g class="wire-node server" transform="translate(225,236)"><rect width="110" height="44" rx="8" /><text x="55" y="27" text-anchor="middle">Servers</text></g>
+                <g class="wire-badge" transform="translate(344,246)"><rect width="196" height="24" rx="12" /><text x="98" y="16" text-anchor="middle">0 requests when you drop a file</text></g>
+              </svg>
+            </div>
+            <ul class="checklist">
+              <li data-reveal><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2" /><path d="M6 8V6a3 3 0 016 0v2" /></svg><span>Check it yourself: open your browser's developer tools, Network tab, then drop a file. Nothing goes out.</span></li>
+              <li data-reveal data-reveal-delay=".08"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2" /><path d="M6 8V6a3 3 0 016 0v2" /></svg><span>Or turn off your Wi-Fi after the page loads and drop a file. It still works.</span></li>
+              <li data-reveal data-reveal-delay=".16"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2" /><path d="M6 8V6a3 3 0 016 0v2" /></svg><span>The command line prints the same report: <code>npm run report -- --tz America/New_York your-trades.csv</code>. <a class="btn-ghost" href="https://github.com/CezarAster/mytradepilot" rel="noopener" target="_blank">Read the engine on GitHub →</a></span></li>
+            </ul>
+          </div>
+          <p class="small muted fine-print" data-reveal>What this page does request: the page itself, its styles and scripts, fonts from Google Fonts, and the fictional sample file from this site (for the river above and the sample button). Nothing in those requests is about you or your trades.</p>
+          <p class="footnote" data-reveal>There is no upload button because there is nothing to upload to.</p>
+        </div>
+      </section>
+
+      <section class="section export" id="export">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Get your file</p>
+            <h2 class="display-2" data-split="lines">Your export takes about a minute.</h2>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Where your trades come from" data-reveal>
+            <button type="button" class="mchip tab" role="tab" id="tab-tv" aria-selected="true" aria-controls="panel-tv">TradingView</button>
+            <button type="button" class="mchip tab" role="tab" id="tab-broker" aria-selected="false" aria-controls="panel-broker" tabindex="-1">Any broker</button>
+          </div>
+          <div class="panels" data-reveal>
+            <div class="tabpanel" role="tabpanel" id="panel-tv" aria-labelledby="tab-tv">
+              <div class="menu-path mono" aria-hidden="true"><span class="mp" data-mp="1">Bar Replay / Strategy Tester</span><span class="arrow">→</span><span class="mp" data-mp="2">List of trades</span><span class="arrow">→</span><span class="mp" data-mp="3">Export ▸ CSV</span></div>
+              <ol class="steps-list">
+                <li>Open Bar Replay or the Strategy Tester.</li>
+                <li>Open the List of trades tab.</li>
+                <li>Export → CSV.</li>
+                <li>Drop it here and pick your chart's time zone in the analyzer.</li>
+              </ol>
+              <p class="small muted">Strategy Tester and Bar Replay exports include each trade's worst point, so the stop check runs on them.</p>
+            </div>
+            <div class="tabpanel" role="tabpanel" id="panel-broker" aria-labelledby="tab-broker" hidden>
+              <p>Export your executions or fills as CSV, not your positions. The file needs columns for symbol, side, quantity, price and time; common column names (ticker, action, shares, fill price, timestamp…) are detected automatically. Fills are matched into round-trip trades, first in, first out.</p>
+              <p class="small muted">Optional: a Worst % column on the closing fill turns on the stop check.</p>
+            </div>
+          </div>
+          <p class="footnote" data-reveal>If the page can't read a file it says so and lists what it expected. Nothing is sent either way.</p>
+          <div class="cta-row" data-reveal>
+            <button type="button" class="btn btn-primary" data-action="pick" data-magnetic>Analyze my trades</button>
+            <button type="button" class="btn btn-secondary" data-action="help">Which files work?</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section roadmap" id="roadmap" aria-label="Roadmap">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Roadmap</p>
+            <h2 class="display-2" data-split="lines">From analyzer to pilot.</h2>
+            <p class="lede" data-reveal>The free analyzer is step one. The full app keeps your journal, learns your edges from it, and checks every setup against them before you click.</p>
+          </div>
+          <div class="timeline" id="timeline">
+            <svg class="line" viewBox="0 0 1000 2" preserveAspectRatio="none" aria-hidden="true"><line id="roadmap-line" x1="0" y1="1" x2="1000" y2="1" stroke="#344050" stroke-width="2" /><line id="roadmap-line-fill" x1="0" y1="1" x2="1000" y2="1" stroke="#5B9CFF" stroke-width="2" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" /></svg>
+            <ol class="milestones" id="milestones">
+              <li class="milestone now" data-ms><span class="when">Now</span><h3>Free analyzer</h3><p>Drop an export, see edges, leaks, stop check and breakdowns.</p></li>
+              <li class="milestone" data-ms><span class="when">Next</span><h3>Journal</h3><p>Your trades, kept and tagged, so the edge analysis grows with you.</p></li>
+              <li class="milestone" data-ms><span class="when">Then</span><h3>Pre-trade check</h3><p>Does this setup match where you make money? Answered before you enter.</p></li>
+              <li class="milestone" data-ms><span class="when">Then</span><h3>Live alerts</h3><p>A ping when one of your best setups is forming.</p></li>
+              <li class="milestone" data-ms><span class="when">Then</span><h3>AI review of your week</h3><p>What worked, what leaked, in plain language.</p></li>
+            </ol>
+          </div>
+          <div class="roadmap-foot">
+            <div class="pf-slot" id="pf-slot">
+              <div class="preflight" id="preflight-roadmap" data-reveal aria-label="Pre-trade check, coming in the full app">
+                <div class="pf-face" data-face="a">
+                  <div class="pf-head">Pre-trade check · <b>ORBX</b> · short · 11:15 ET · Thu Apr 9</div>
+                  <ul class="pf-rows">
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>3rd trade of the day</b> → Leak</span><span class="res neg"><span data-sample="group.tradeOfDay.3rd.avgReturn" data-format="pct">−0.81%</span> a trade · <span data-sample="group.tradeOfDay.3rd.confidence">solid</span></span></li>
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Back in within 10 min of a loss</b> → Leak</span><span class="res neg"><span data-sample="group.afterPrev.< 10 min after a loss.avgReturn" data-format="pct">−0.83%</span> a trade · <span data-sample="group.afterPrev.< 10 min after a loss.confidence">early signal</span></span></li>
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Short</b> → Leak</span><span class="res neg"><span data-sample="group.direction.Short.avgReturn" data-format="pct">−0.11%</span> a trade · <span data-sample="group.direction.Short.confidence">solid</span></span></li>
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>10:15–11:30 entry</b></span><span class="res"><span data-sample="group.time.10:15–11:30.avgReturn" data-format="pct">+0.29%</span> a trade · <span data-sample="group.time.10:15–11:30.confidence">solid</span></span></li>
+                  </ul>
+                  <div class="pf-verdict bad">This setup matches where you give it back.</div>
+                  <div class="pf-foot">Coming in the full app</div>
+                </div>
+                <div class="pf-face" data-face="b" aria-hidden="true">
+                  <div class="pf-head">Pre-trade check · <b>LUMN</b> · long · 9:42 ET · Thu Mar 5</div>
+                  <ul class="pf-rows">
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>1st trade of the day</b> → Edge</span><span class="res pos"><span data-sample="group.tradeOfDay.1st.avgReturn" data-format="pct">+0.94%</span> a trade · <span data-sample="group.tradeOfDay.1st.confidence">solid</span></span></li>
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>9:30–9:45 entry</b> → Edge</span><span class="res pos"><span data-sample="group.time.9:30–9:45.avgReturn" data-format="pct">+0.88%</span> a trade · <span data-sample="group.time.9:30–9:45.confidence">solid</span></span></li>
+                    <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Long</b> → Edge</span><span class="res pos"><span data-sample="group.direction.Long.avgReturn" data-format="pct">+0.52%</span> a trade · <span data-sample="group.direction.Long.confidence">solid</span></span></li>
+                  </ul>
+                  <div class="pf-verdict good">This matches where you make money.</div>
+                  <div class="pf-foot">Coming in the full app</div>
+                </div>
+              </div>
+              <p class="pf-note small muted">Two real trades from the sample. This feature is not built yet; the waitlist is how it gets built.</p>
+            </div>
+            <div class="roadmap-cta" data-reveal>
+              <a class="btn btn-primary" href="#signup" data-scroll-to data-magnetic>Join the waitlist</a>
+              <small>Early access and founding-member pricing for the waitlist.</small>
+              <p class="footnote">No launch date is promised. You'll hear from us when there is something to try.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section signup-sec" id="signup" aria-label="Waitlist">
+        <div class="wrap">
+          <div class="signup-band">
+            <div class="signup-copy">
+              <h2 class="display-2" id="signup-h" data-split="lines">Get your edge checked before every trade.</h2>
+              <p>The full MyTradePilot app is coming: a journal that learns your edges, a pre-trade check that tells you if a setup matches where you make money, live alerts for your best setups, and an AI review of your week. Join the waitlist for early access and founding-member pricing.</p>
+            </div>
+            <div>
+              <form class="signup-form" id="signup-form" novalidate action="https://buttondown.com/api/emails/embed-subscribe/MyTradePilot" method="post" target="_blank">
+                <label for="signup-email" class="sr-only">Email address</label>
+                <input type="email" id="signup-email" name="email" required autocomplete="email" placeholder="you@example.com" />
+                <button type="submit" class="btn btn-primary" id="signup-btn" data-magnetic><span class="pilot-slot" id="wl-pilot" data-pilot-anchor="waitlist" aria-hidden="true"></span>Join the waitlist</button>
+              </form>
+              <p class="signup-msg" role="status" id="signup-msg"></p>
+              <p class="small-print">We only get your email address, never your trades. Unsubscribe anytime. <span class="mchip">trades sent: 0 bytes</span></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section faq" id="faq">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>FAQ</p>
+            <h2 class="display-2" data-split="lines">Questions, answered straight.</h2>
+          </div>
+          <div class="faq-list" data-reveal>
+            <details><summary>Is it really free?</summary><div class="faq-body"><p>Yes. The analyzer runs on your computer, not on our servers, so it costs nothing to run and it stays free. The waitlist is for the full app, which will be paid.</p></div></details>
+            <details><summary>Do you see my trades?</summary><div class="faq-body"><p>No. The file is read in your browser's memory and never sent anywhere. You can check: open the Network tab in your browser's developer tools, drop a file, and watch nothing go out. The only thing this site ever sends is your email address, if you join the waitlist.</p></div></details>
+            <details><summary>Is the sample real?</summary><div class="faq-body"><p>No. The sample is a fictional trader generated by a script in the repository (scripts/make-sample.py) with planted patterns, so you can see what the analyzer finds. Every number on this page is computed from that file by the engine, live, in this tab.</p></div></details>
+            <details><summary>Which files work?</summary><div class="faq-body"><p>TradingView's List of trades export from Bar Replay or the Strategy Tester, and any broker executions or fills export with symbol, side, quantity, price and time columns. Several files at once are fine: overlapping exports are de-duplicated and partial fills are merged.</p></div></details>
+            <details><summary>Which markets?</summary><div class="faq-body"><p>Anything your export covers: stocks, futures, forex, crypto. The entry-time buckets use New York market hours; trade number of the day, what came before, direction, hold time, weekday and ticker don't depend on the session.</p></div></details>
+            <details><summary>How many trades do I need?</summary><div class="faq-body"><p>It runs on a handful, but under 30 trades the whole report is labelled an early signal. Groups under 5 trades are faded and never called an edge or a leak; 5 to 14 is an early signal; 15 or more is solid.</p></div></details>
+            <details><summary>What does "early signal" mean?</summary><div class="faq-body"><p>Fewer than 15 trades in the group. "Solid" is 15 or more. Under 5 is "too few" and never becomes an insight.</p></div></details>
+            <details><summary>What does "shrunk toward your average" mean?</summary><div class="faq-body"><p>Each group's average is mixed with 10 imaginary trades at your overall average: adjusted = (n × group average + 10 × overall average) ÷ (n + 10). Three lucky trades at +4% read as about +1.2%; 45 trades at +0.9% keep most of their signal.</p></div></details>
+            <details><summary>Why isn't hold time used for edges?</summary><div class="faq-body"><p>Because winners get held longer precisely because they are winning. It's shown so you can see it, but mining it would just tell you to hold winners, which you already know. Ticker and weekday are kept out for a different reason: they are too easy to overfit.</p></div></details>
+            <details><summary>What is the stop check?</summary><div class="faq-body"><p>If your export includes each trade's worst point (TradingView's does; a fills export can add a Worst % column), the report counts trades that went past your usual stop and came back, the ones that didn't, and what your total would be if every one had been closed at the stop. Without worst-point data the check is skipped and the report says so.</p></div></details>
+            <details><summary>Can I check the math?</summary><div class="faq-body"><p>Yes. The engine lives in src/core with tests in test/, and the command-line tool prints the same report as the page: <code>npm run report -- --tz America/New_York your-trades.csv</code>.</p></div></details>
+            <details><summary>What's in the full app, and when? Is any of this advice?</summary><div class="faq-body"><p>Journal, edge analysis that stays current, a pre-trade check, live alerts for your best setups and an AI review of your week. No launch date is promised; waitlist members get early access and founding-member pricing. None of it is investment advice: it is an educational tool, and past results don't predict future results.</p></div></details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final" id="final" aria-label="Analyze your trades">
+        <div class="wrap">
+          <h2 class="display-2" data-split="lines">Your trade log is ready when you are.</h2>
+          <div class="cta-row" data-reveal>
+            <button type="button" class="btn btn-primary" data-action="pick" data-magnetic>Analyze my trades</button>
+            <button type="button" class="btn btn-secondary" data-action="demo">Run the sample report</button>
+          </div>
+          <p class="small muted" data-reveal>Free. In your browser. Nothing uploaded.</p>
+        </div>
       </section>
     </main>
 
-    <footer>
-      <p>Educational tool, not investment advice. Past results don't predict future results.</p>
+    <footer class="footer">
+      <div class="wrap">
+        <div>
+          <p class="brand"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="currentColor" /></svg>MyTradePilot</p>
+          <p>Educational tool, not investment advice. Past results don't predict future results.</p>
+          <p>Sample data is fictional.</p>
+          <p class="mono built">BUILT IN THE OPEN · STATIC SITE · NO TRACKING SCRIPTS</p>
+        </div>
+        <nav aria-label="Footer"><a href="#story" data-scroll-to>How it works</a><a href="#method" data-scroll-to>Methodology</a><a href="#roadmap" data-scroll-to>Roadmap</a><a href="#signup" data-scroll-to>Waitlist</a><a href="#faq" data-scroll-to>FAQ</a><a href="https://github.com/CezarAster/mytradepilot" rel="noopener" target="_blank">Engine and tests on GitHub</a><button type="button" id="motion-toggle" aria-pressed="true">Motion: on</button><span>© 2026 MyTradePilot</span></nav>
+      </div>
     </footer>
+
+    <div id="dock" class="dock" role="region" aria-label="Quick actions" data-visible="false">
+      <div class="dock-desktop">
+        <button type="button" class="btn btn-primary" data-action="pick">Drop your CSV</button>
+        <button type="button" class="btn btn-secondary" data-action="demo">Run the sample</button>
+      </div>
+      <div class="dock-phone">
+        <button type="button" class="btn btn-primary" data-action="demo">Run the sample report</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/web/main.ts"></script>
+    <script type="module" src="/src/web/site/index.ts"></script>
   </body>
 </html>
