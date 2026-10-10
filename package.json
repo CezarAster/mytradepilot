@@ -1,6 +1,6 @@
 {
   "name": "mytradepilot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "MyTradePilot: free trade analyzer plus the Referee, a local app that enforces your own trading rules on your Alpaca account.",
