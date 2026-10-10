@@ -267,6 +267,8 @@ export function mount(ctx: SiteCtx): Mounted {
       if (id.length > 1 && document.querySelector(id)) {
         e.preventDefault();
         ctx.scrollTo(id, id === '#top' ? 0 : -(ctx.navH() + 8));
+        // The skip link hands focus to the drop zone, as a plain anchor jump would.
+        if (link.id === 'skip') $<HTMLElement>(id)?.focus({ preventScroll: true });
       }
     }
   };

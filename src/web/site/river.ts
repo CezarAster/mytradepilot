@@ -71,6 +71,7 @@ export class River {
   private dpr = 1;
   private raf = 0;
   private t0 = 0;
+  private finishTimer = 0;
   private hover = -1;
   private needDraw = true;
   private pointerOn = false;
@@ -216,6 +217,7 @@ export class River {
   }
 
   start(): void {
+    this.clearFinish();
     this.t0 = performance.now();
     this.done = false;
     this.needDraw = true;
@@ -254,6 +256,7 @@ export class River {
     const tick = (now: number) => {
       if (!this.visible || this.hidden) {
         this.raf = 0;
+        this.finishLater();
         return;
       }
       const t = (now - this.t0) / 1000;
@@ -274,6 +277,27 @@ export class River {
   stop(): void {
     cancelAnimationFrame(this.raf);
     this.raf = 0;
+    this.clearFinish();
+  }
+
+  /** The hero left the screen (or the tab hid) before the rain ended: end it on a timer so the pilot marker still starts. */
+  private finishLater(): void {
+    if (this.done || this.finishTimer || !this.t0) return;
+    const left = Math.max(0, 2.7 - (performance.now() - this.t0) / 1000);
+    this.finishTimer = window.setTimeout(() => {
+      this.finishTimer = 0;
+      if (this.done) return;
+      this.done = true;
+      this.needDraw = true;
+      this.onDone?.();
+    }, left * 1000 + 50);
+  }
+
+  private clearFinish(): void {
+    if (this.finishTimer) {
+      clearTimeout(this.finishTimer);
+      this.finishTimer = 0;
+    }
   }
 
   setExit(p: number): void {
