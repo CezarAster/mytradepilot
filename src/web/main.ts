@@ -1,5 +1,5 @@
 import { analyze, type Dimension, type Insight, type Report } from '../core/analyze.ts';
-import { insightSentence, money, pct } from '../core/format.ts';
+import { HYPOTHETICAL, insightSentence, money, pct } from '../core/format.ts';
 import { combineTrades, parseFile } from '../core/parsers/index.ts';
 import type { Trade } from '../core/types.ts';
 import { setupSignup } from './signup.ts';
@@ -155,12 +155,13 @@ function render(r: Report, warnings: string[]): string {
   const risk = k.hasExcursions
     ? `<p>${k.pastStop} of ${s.trades} trades went more than ${k.stopPct}% against you at some point; ${k.pastStopCameBack} of them came back green.
        Closing every one of them at −${k.stopPct}% would have made your total <b class="${tone(k.returnWithStop)}">${pct(k.returnWithStop, 1)}</b> instead of <b class="${tone(s.totalReturn)}">${pct(s.totalReturn, 1)}</b>
-       <span class="muted">(estimate from each trade's worst point; sum of trade %).</span></p>`
+       <span class="muted">(estimate from each trade's worst point; sum of trade %).</span></p>
+       <p class="muted">${HYPOTHETICAL}</p>`
     : `<p class="muted">This export has no worst-point (excursion) data, so the stop check is skipped.</p>`;
 
   const concentration =
     k.top5Share !== null
-      ? `<p>Your 5 best trades made <b>${Math.round(k.top5Share * 100)}%</b> of your total. ${k.top5Share > 0.8 ? 'Your results depend on a few big winners, so cutting winners early is the most expensive habit you could have.' : ''}</p>`
+      ? `<p>Your 5 best trades made <b>${Math.round(k.top5Share * 100)}%</b> of your total. ${k.top5Share > 0.8 ? 'Your results depend on a few big winners.' : ''}</p>`
       : '';
 
   return `
@@ -182,6 +183,7 @@ function render(r: Report, warnings: string[]): string {
       <section class="panel">
         <h2>Where you give it back</h2>
         ${r.leaks.length ? `<ul>${r.leaks.map((i) => insightCard(i, r)).join('')}</ul>` : '<p class="muted">No group of 5+ trades loses money or clearly drags your average. Nice.</p>'}
+        ${r.leaks.some((i) => i.kind === 'leak') ? `<p class="muted">${HYPOTHETICAL}</p>` : ''}
       </section>
     </div>
 
