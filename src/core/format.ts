@@ -14,5 +14,5 @@ export function insightSentence(i: Insight, r: Report): string {
   const base = `${g.phrase}: ${g.n} trades, ${Math.round(g.winRate * 100)}% win, ${pct(g.avgReturn)} a trade vs ${pct(r.summary.avgReturn)} overall.`;
   if (i.kind === 'edge') return base;
   if (i.kind === 'weak') return `${base} Still profitable, but these trades pull your average down.`;
-  return `${base} Skipping them would have made your total ${pct(i.returnWithout, 1)} instead of ${pct(r.summary.totalReturn, 1)} (sum of trade %).`;
+  return `${base} Without them, your total would have been ${pct(i.returnWithout, 1)} instead of ${pct(r.summary.totalReturn, 1)} (sum of trade %).`;
 }

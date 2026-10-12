@@ -2,7 +2,7 @@
 import { money, pct } from '../../src/core/format.ts';
 import type { Breach, Declaration, NextTrade, OpenPosition } from '../../src/engine/types.ts';
 import type { DeclareRequest, EnforcementState, StateResponse, StatusResponse, TradeDto } from '../../src/server/api.ts';
-import { tone } from '../../src/web/report.ts';
+import { tone } from '../report.ts';
 import { api, NOT_REACHABLE } from '../api.ts';
 import { clockET, dateLabel, dateTimeET, money2, pctInt, price, shares, timeET } from '../format.ts';
 import {

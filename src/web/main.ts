@@ -1,7 +1,9 @@
+// The analyzer console: file loading, options, the sample run, and the report written into #report.
+// The report's HTML (stats, edges, leaks with the statement, the stop check, breakdowns, the three drafts) is report.ts.
 import { analyze } from '../core/analyze.ts';
 import { combineTrades, parseFile } from '../core/parsers/index.ts';
 import type { Trade } from '../core/types.ts';
-import { renderReport } from './report.ts';
+import { render } from './report.ts';
 import { setupSignup } from './signup.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -63,7 +65,7 @@ function run() {
     return;
   }
   statusEl.textContent = `${loaded.length} file${loaded.length > 1 ? 's' : ''} loaded.`;
-  reportEl.innerHTML = renderReport(analyze(trades, { stopPct }), warnings);
+  reportEl.innerHTML = render(analyze(trades, { stopPct }), warnings, trades);
 }
 
 async function load(files: FileList | File[]) {
