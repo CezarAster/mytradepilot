@@ -28,6 +28,7 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run build:app
 
       # Preview of the Referee site from its branch, served next to the current page at /referee/.
       # Re-run this workflow (Actions -> Test and deploy -> Run workflow) to pick up new commits on the branch.

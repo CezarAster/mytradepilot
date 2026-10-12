@@ -358,3 +358,21 @@ export function analyze(trades: Trade[], opts: AnalyzeOptions): Report {
 
   return { summary, dimensions, edges, leaks, risk };
 }
+
+// ---- Labels shared with the live engine, so "next trade" context matches the report's buckets. ----
+
+export function tradeOfDayLabel(n: number): string {
+  return TRADE_OF_DAY.find((b) => b.test({ tradeOfDay: n } as Ctx))?.label ?? '4th or later';
+}
+
+export function afterPrevLabel(prev: Ctx['prev']): string {
+  return AFTER_PREV.find((b) => b.test({ prev } as Ctx))?.label ?? 'First of the day';
+}
+
+export function timeBucketLabel(minutes: number): string {
+  return TIME_BUCKETS.find((b) => b.test({ minutes } as Ctx))?.label ?? 'After hours';
+}
+
+export const QUICK_REENTRY_MINUTES = QUICK_REENTRY_MIN;
+export const SOLID_N = 15;
+export const MIN_N = MIN_INSIGHT_N;
