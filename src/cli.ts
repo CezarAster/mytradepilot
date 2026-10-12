@@ -1,7 +1,8 @@
 // Usage: node src/cli.ts [--tz America/Los_Angeles] [--stop 2] file.csv [more.csv ...]
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { analyze } from './core/analyze.ts';
+import { analyze, tagTrades } from './core/analyze.ts';
+import { draftRules } from './core/drafts.ts';
 import { insightSentence, money, pct } from './core/format.ts';
 import { combineTrades, parseFile } from './core/parsers/index.ts';
 import { isValidTimeZone } from './core/time.ts';
@@ -26,7 +27,8 @@ const lists = files.map((f) => {
   console.log(`${basename(f)}: ${res.format}, ${res.trades.length} trades`);
   return res.trades;
 });
-const report = analyze(combineTrades(lists), { stopPct });
+const trades = combineTrades(lists);
+const report = analyze(trades, { stopPct });
 const s = report.summary;
 
 console.log(`\n=== ${s.trades} closed trades, ${s.days} days, ${s.firstDay} → ${s.lastDay} (${s.symbols.join(', ')}) ===`);
@@ -38,6 +40,11 @@ console.log('\nEDGES');
 for (const e of report.edges) console.log(`  + ${insightSentence(e, report)} [${e.group.confidence}]`);
 console.log('LEAKS');
 for (const l of report.leaks) console.log(`  - ${insightSentence(l, report)} [${l.group.confidence}]`);
+// The same three drafts the web page renders (content spec 4.1), so "check the math" holds for them too.
+const drafted = draftRules(report, tagTrades(trades));
+console.log('DRAFTS');
+for (const d of drafted.drafts) console.log(`  * ${d.sentence}  [${d.tag}]  ${d.recordLine}  ${d.heldLine}`);
+if (drafted.notRuleLine) console.log(`  ${drafted.notRuleLine}`);
 
 const r = report.risk;
 if (r.hasExcursions) {

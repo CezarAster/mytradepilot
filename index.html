@@ -2,72 +2,811 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MyTradePilot: Free Trade Analyzer</title>
-    <meta name="description" content="Find out which of your trades actually make money. Free, and your trades never leave your computer." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>MyTradePilot: write the rule calm. The Referee holds it on TopstepX.</title>
+    <meta name="description" content="MyTradePilot's free analyzer reads your trade export in your browser, uploads nothing, and shows your record: where you make money, where you give it back, and three draft rules written from it. Declare the rules you keep, and the Referee holds them on TopstepX: a fill against your own rule is flattened about two seconds after it lands, the breach is logged, and your partner is told. Topstep Combine pilot, late December 2026." />
+    <meta property="og:title" content="MyTradePilot: write the rule calm. The Referee holds it on TopstepX." />
+    <meta property="og:description" content="MyTradePilot's free analyzer reads your trade export in your browser, uploads nothing, and shows your record: where you make money, where you give it back, and three draft rules written from it. Declare the rules you keep, and the Referee holds them on TopstepX: a fill against your own rule is flattened about two seconds after it lands, the breach is logged, and your partner is told. Topstep Combine pilot, late December 2026." />
+    <meta name="theme-color" content="#0A0C10" />
+    <script>(function(){var h=document.documentElement;h.classList.add('js');try{var off=false;try{off=localStorage.getItem('motion')==='off'}catch(e){}if(matchMedia('(prefers-reduced-motion: no-preference)').matches&&!off)h.classList.add('motion');}catch(e){}window.__booted=false;setTimeout(function(){if(!window.__booted){h.classList.remove('motion');h.classList.add('motion-failed');}},2000);})();</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="/src/web/style.css" />
+    <link rel="stylesheet" href="/src/web/site.css" />
   </head>
   <body>
-    <nav class="brand"><span class="logo" aria-hidden="true">◆</span> MyTradePilot</nav>
-    <header class="hero">
-      <p class="eyebrow">Free trade analyzer</p>
-      <h1>Find out which of your trades actually make money.</h1>
-      <p class="lede">Drop in your trade export. In a few seconds you'll see your real edges, your leaks, and what your stop is doing for you.</p>
-      <p class="privacy">🔒 Runs entirely in your browser. Your trades are never uploaded.</p>
+    <a id="skip" class="sr-only-focusable" href="#drop">Skip to analyzer</a>
+
+    <svg id="pilot" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="pilot-glow" x="-200%" y="-200%" width="500%" height="500%">
+          <feGaussianBlur stdDeviation="4" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <g id="pilot-tail"></g>
+      <g id="pilot-g" style="opacity:0">
+        <circle r="11" fill="rgba(91,156,255,.14)"/>
+        <path d="M0 -7 L7 0 L0 7 L-7 0 Z" fill="#5B9CFF" filter="url(#pilot-glow)"/>
+      </g>
+    </svg>
+
+    <header class="nav" id="top" data-hero>
+      <div class="wrap">
+        <div class="nav-lead">
+          <a class="brand" href="#top" data-scroll-to><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="currentColor"/></svg>MyTradePilot</a>
+          <span class="nav-tag">You write the rule while calm. The Referee holds it when you are not.</span>
+        </div>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="#story" data-scroll-to>How it works</a>
+          <a href="#rulebook" data-scroll-to>Rulebook</a>
+          <a href="#pricing" data-scroll-to>Pricing</a>
+          <a href="#limits" data-scroll-to>Limits</a>
+        </nav>
+        <div class="nav-actions">
+          <button type="button" class="btn btn-secondary" id="nav-sample" data-action="demo">Try the sample</button>
+          <a class="btn btn-primary" href="#signup" id="nav-join" data-scroll-to>Join the waitlist</a>
+        </div>
+      </div>
     </header>
 
-    <main>
-      <section class="panel" id="input">
-        <label class="drop" id="drop">
-          <input type="file" id="files" accept=".csv,text/csv" multiple hidden />
-          <strong>Drop CSV files here</strong>
-          <span>or click to choose. Several files at once are fine; duplicates are removed.</span>
-        </label>
-
-        <div class="options">
-          <label>
-            Time zone of your export
-            <select id="tz"></select>
-          </label>
-          <label>
-            Your usual stop (%)
-            <input type="number" id="stop" value="2" min="0.1" max="50" step="0.1" />
-          </label>
-          <button type="button" id="demo" class="link">Try it with sample trades</button>
+    <main id="main">
+      <section class="hero" id="hero" aria-label="The Referee and the free analyzer">
+        <div class="hero-river" id="hero-river">
+          <canvas id="hero-canvas" aria-hidden="true"></canvas>
+          <span class="hero-end" id="hero-end" data-pilot-anchor="hero" aria-hidden="true"></span>
+          <div class="hero-labels" id="hero-labels" aria-hidden="true"></div>
         </div>
-        <details class="help">
-          <summary>Which files work?</summary>
-          <ul>
-            <li><b>TradingView</b>: Bar Replay or Strategy Tester → List of trades → Export (CSV). Use your chart's time zone above.</li>
-            <li><b>Any broker</b>: an executions/fills export with columns for symbol, side, quantity, price and time. Fills are matched into round-trip trades automatically.</li>
-          </ul>
-        </details>
+        <div class="hero-scrim" aria-hidden="true"></div>
+        <div class="hero-tooltip" id="hero-tooltip" aria-hidden="true"></div>
+        <p class="hero-caption mono-label" id="hero-caption" aria-hidden="true">Sample record · <span data-sample="summary.trades" data-format="int">112</span> fictional trades · computed in your browser</p>
+        <p id="hero-sr" class="sr-only">The sample trader's equity curve: 112 fictional trades, trough −$774, peak $3,441, end $3,238.</p>
+
+        <div class="wrap hero-inner">
+          <div class="hero-text">
+            <p class="eyebrow" data-hero>The Referee · Free analyzer now · Topstep Combine pilot late December 2026</p>
+            <h1 data-split="words" data-hero-split>Write the rule calm. It <em>binds</em> when you are not.</h1>
+            <p class="lede" data-hero>Drop a TradingView or broker export, free and in your browser, nothing uploaded. See where you make money, where you give it back, and three draft rules written from your record. Declare the ones you keep; on TopstepX the Referee holds them, and a fill against your own rule is flattened about two seconds after it lands, logged, and sent to your partner. Pilot late December 2026.</p>
+            <div class="hero-ctas" data-hero>
+              <button type="button" class="btn btn-primary" id="cta-drop" data-action="pick" data-magnetic><span class="cta-desktop">Drop your CSV</span><span class="cta-mobile">Choose my CSV files</span></button>
+              <button type="button" class="btn btn-secondary" id="cta-sample" data-action="demo" data-magnetic>Run the sample report</button>
+            </div>
+          </div>
+
+          <section class="console" id="input" aria-label="Analyzer" data-hero>
+            <div class="wb-head">
+              <h2>Analyzer</h2>
+              <span class="mchip"><i class="dot"></i>runs locally</span>
+              <span class="spacer"></span>
+              <div class="file-card" id="file-card" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 3h9l6 6v16H7z"/><path d="M16 3v6h6M10 14h9M10 18h9M10 22h6"/></svg>
+                <div><b id="file-card-name">Sample trades (fills).csv</b><span id="file-card-meta"><span data-sample="fills.rows" data-format="int">232</span> rows · <span data-sample="fills.kb" data-format="int">12</span> KB</span></div>
+              </div>
+            </div>
+            <label class="drop" id="drop" for="files" tabindex="0">
+              <input type="file" id="files" accept=".csv,text/csv" multiple hidden />
+              <strong>Drop CSV files here</strong>
+              <span>or click to choose. Several files at once are fine; duplicates removed, partial fills merged.</span>
+            </label>
+            <div class="options">
+              <label>Time zone of your export <select id="tz"></select></label>
+              <label>Your usual stop (%) <input type="number" id="stop" value="2" min="0.1" max="50" step="0.1" /></label>
+            </div>
+            <div class="wb-foot">
+              <button type="button" id="demo" class="btn-ghost">Run the sample report</button>
+              <details class="help" id="help">
+                <summary>Which files work?</summary>
+                <ul>
+                  <li><b>TradingView</b>: Bar Replay or Strategy Tester → List of trades → Export (CSV). Use your chart's time zone above.</li>
+                  <li><b>Any broker</b>: an executions/fills export with columns for symbol, side, quantity, price and time. Fills are matched into round-trip trades automatically.</li>
+                  <li><b>Stop check</b>: runs when the export carries each trade's worst point. TradingView's does; a fills export can add a <code>Worst %</code> column on the closing fill.</li>
+                </ul>
+              </details>
+              <p class="trust-line">Open DevTools and watch the Network tab: nothing leaves. Turn Wi-Fi off after the page loads and it still works.</p>
+              <p id="status" class="status" role="status"></p>
+            </div>
+          </section>
+        </div>
       </section>
 
-      <p id="status" class="status" role="status"></p>
-      <div id="report"></div>
-
-      <section class="panel signup" id="signup" hidden>
-        <div>
-          <h2>Get your edge checked before every trade</h2>
-          <p>
-            The full MyTradePilot app launches in late December 2026: a pre-trade check that tells you if a setup matches where you make money,
-            live alerts for your best setups, and an AI review of your week. Join the waitlist for early access and founding-member pricing.
-          </p>
+      <section id="results" aria-label="Your record">
+        <div class="wrap">
+          <div id="report-bar" class="report-bar" hidden><span class="mono-label" data-report-label>Your record · computed in this tab · nothing uploaded</span><a href="#top" data-scroll-to class="btn-ghost">Back to top ↑</a></div>
+          <div id="report"></div>
+          <div id="report-followup" hidden>
+            <div class="followup-copy">
+              <p class="eyebrow">Next step</p>
+              <h2 class="display-2">Rules found is step one. Rules <em>kept</em> is the product.</h2>
+              <p class="lede">The Referee is the paid part, in pilot with Topstep Combine traders from late December 2026: the rules you ratify, declared before each session and held on TopstepX through the ProjectX API, with a partner who sees every breach. Join the waitlist and you pick your seat when the pilot opens.</p>
+              <a href="#drop" data-scroll-to class="btn-ghost">Analyze another file ↑</a>
+            </div>
+            <section class="signup-mini" id="signup-report" hidden aria-label="Waitlist">
+              <form class="signup-form" novalidate>
+                <label for="signup-email-2" class="sr-only">Email address</label>
+                <input type="email" id="signup-email-2" required autocomplete="email" placeholder="you@example.com" />
+                <button type="submit" class="btn btn-primary">Join the Referee waitlist</button>
+              </form>
+              <p class="signup-msg" role="status"></p>
+              <p class="small-print">We only get your email address, never your trades or your rules. Unsubscribe anytime.</p>
+            </section>
+          </div>
         </div>
-        <form novalidate>
-          <label for="signup-email" class="sr-only">Email address</label>
-          <input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com" />
-          <button type="submit">Join the waitlist</button>
-        </form>
-        <p class="signup-msg" role="status"></p>
-        <p class="muted small">We only get your email address, never your trades. Unsubscribe anytime.</p>
+      </section>
+
+      <section class="trust" id="trust" aria-label="What is true about this tool">
+        <div class="wrap">
+          <ul>
+            <li class="trust-item" data-reveal>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2"/><path d="M6 8V6a3 3 0 016 0v2"/></svg>
+              <div><strong>Nothing uploaded</strong>the analyzer reads your file in this tab and never sends it; refresh and it is gone.</div>
+            </li>
+            <li class="trust-item" data-reveal data-reveal-delay=".08">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="9" r="7"/><path d="M5.5 9.5l2.5 2.5 4.5-5"/></svg>
+              <div><strong>Free, no account</strong>no sign-up to see your record or your draft rules; the engine and its tests are <a href="https://github.com/CezarAster/mytradepilot" rel="noopener">public</a>.</div>
+            </li>
+            <li class="trust-item" data-reveal data-reveal-delay=".16">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 16V2"/><path d="M4 2.5h10l-3 3.5 3 3.5H4"/></svg>
+              <div><strong>In pilot, not for sale</strong>the Referee has no result yet. The Topstep Combine pilot in late December 2026 is where it gets one.</div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section numbers" id="numbers">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>The record</p>
+            <h2 class="display-2" data-split="lines">Here is the sample record, computed live on this page.</h2>
+          </div>
+          <div class="grid">
+            <div class="counter" data-reveal>
+              <div class="val"><span class="num" data-counter="112" data-counter-format="int" data-sample="summary.trades" data-format="int">112</span></div>
+              <p class="lbl">trades</p>
+            </div>
+            <div class="counter" data-reveal data-reveal-delay=".08">
+              <div class="val"><span class="num" data-counter="61" data-counter-format="pct0" data-sample="summary.winRate" data-format="pctInt">61%</span></div>
+              <p class="lbl">win rate</p>
+            </div>
+            <div class="counter" data-reveal data-reveal-delay=".16">
+              <div class="val"><span class="pilot-slot" id="num-pilot" data-pilot-anchor="numbers" aria-hidden="true"></span><span class="num pos" data-counter="37.3" data-counter-format="pct1" data-sample="summary.totalReturn" data-format="pct1">+37.3%</span></div>
+              <p class="lbl">summed return</p>
+            </div>
+            <div class="counter" data-reveal data-reveal-delay=".24">
+              <div class="val"><span class="num neg" data-counter="-2346" data-counter-format="money" data-sample="group.tradeOfDay.3rd.totalPnl" data-format="money">−$2,346</span></div>
+              <p class="lbl">on 3rd trades of the day</p>
+            </div>
+          </div>
+          <p class="caption small muted" data-reveal>Sample trades are fictional (public/sample-trades.csv). Your own numbers appear the moment you drop a file.</p>
+          <p class="footnote" data-reveal>A fictional trader. The patterns are real because the engine found them, not because we drew them.</p>
+          <a class="slim" href="#signup" data-scroll-to data-reveal>Rules found is step one. Rules kept is the product. <span>Join the Referee waitlist →</span></a>
+        </div>
+      </section>
+
+      <section class="story" id="story">
+        <div class="wrap story-stage">
+          <div class="story-head section-head">
+            <p class="eyebrow" data-reveal>How it works</p>
+            <h2 class="display-2" data-split="lines">From record to rule to <em>held</em>, in four scrolls.</h2>
+          </div>
+          <figure class="story-frame" id="story-frame" aria-label="Sample record walkthrough">
+            <div class="frame-head">
+              <span class="mono-label">Sample · <span data-sample="summary.trades" data-format="int">112</span> <span class="ph-hide">fictional </span>trades</span>
+              <span class="mono-label frame-clock" id="story-clock" aria-hidden="true">11:15:02</span>
+              <span class="states" id="story-states" aria-hidden="true"><span class="pilot-slot" id="frame-pilot" data-pilot-anchor="frame"></span><i class="on"></i><i></i><i></i><i></i></span>
+            </div>
+            <div class="frame-stage" id="frame-stage">
+              <pre class="story-csv" id="story-csv" aria-hidden="true"></pre>
+              <div class="lanes" id="story-lanes" aria-hidden="true">
+                <div class="lane" data-lane="1"><div class="lane-lbl"><b>1st</b><small><span data-sample="group.tradeOfDay.1st.n" data-format="int">45</span> trades · <span data-sample="group.tradeOfDay.1st.winRate" data-format="pctInt">73%</span> win</small></div><i class="zero"></i><i class="bar"></i><span class="bar-val" data-sample="group.tradeOfDay.1st.avgReturn" data-format="pct">+0.94%</span></div>
+                <div class="lane" data-lane="2"><div class="lane-lbl"><b>2nd</b><small><span data-sample="group.tradeOfDay.2nd.n" data-format="int">38</span> trades · <span data-sample="group.tradeOfDay.2nd.winRate" data-format="pctInt">58%</span> win</small></div><i class="zero"></i><i class="bar"></i><span class="bar-val" data-sample="group.tradeOfDay.2nd.avgReturn" data-format="pct">+0.44%</span></div>
+                <div class="lane" data-lane="3"><div class="lane-lbl"><b>3rd</b><small><span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span> trades · <span data-sample="group.tradeOfDay.3rd.winRate" data-format="pctInt">42%</span> win</small></div><i class="zero"></i><i class="bar neg"></i><span class="bar-val neg" data-sample="group.tradeOfDay.3rd.avgReturn" data-format="pct">−0.81%</span></div>
+                <div class="lane" data-lane="4"><div class="lane-lbl"><b>4th+</b><small><span data-sample="group.tradeOfDay.4th or later.n" data-format="int">3</span> trades · <span data-sample="group.tradeOfDay.4th or later.confidence" data-format="text">too few</span></small></div><i class="zero"></i><i class="bar neg"></i><span class="bar-val neg" data-sample="group.tradeOfDay.4th or later.avgReturn" data-format="pct">−0.29%</span></div>
+              </div>
+              <div class="story-chips" id="story-chips" aria-hidden="true"></div>
+              <div class="story-card" id="story-card">
+                <div class="story-face" id="story-rule" data-face="a">
+                  <span class="tag">Your rule</span>
+                  <p class="sentence" data-sample="drafts.0.sentence" data-format="text">I stop after 2 trades a day.</p>
+                  <p class="record">Your record shows: <span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span> third trades, <span data-sample="group.tradeOfDay.3rd.winRate" data-format="pctInt">42%</span> winners, <span data-sample="group.tradeOfDay.3rd.avgReturn" data-format="pct">−0.81%</span> a trade. Solid.</p>
+                  <div class="amount"><span class="big num neg" id="story-counter" data-sample="group.tradeOfDay.3rd.totalPnl" data-format="money">−$2,346</span><small>net on 3rd trades of the day</small></div>
+                </div>
+                <div class="story-face held" id="story-held" data-face="b" aria-hidden="true">
+                  <div class="held-head">Thu Apr 9 · the Referee on TopstepX · illustrative on the sample's record</div>
+                  <div class="held-rows">
+                    <div class="held-row" data-row="r1"><span class="t"><span data-sample="trade.2026-04-09.HYDR.10:00.exit" data-format="text">11:12</span></span><span class="x">HYDR short closes. A loss.</span></div>
+                    <div class="held-row say" data-row="r2"><span class="t"></span><span class="x">Your rule says: no entry before 11:22.</span></div>
+                    <div class="held-row" data-row="r3"><span class="t neg"><span data-sample="trade.2026-04-09.ORBX.11:15.entry" data-format="text">11:15</span>:00</span><span class="x fill">Filled ORBX short · <span data-sample="trade.2026-04-09.ORBX.11:15.gapMin" data-format="int">3</span> min after a losing exit · <span data-sample="trade.2026-04-09.ORBX.11:15.tradeOfDay" data-format="int">3</span>rd trade of the day</span></div>
+                    <div class="held-row" data-row="r4"><span class="t accent">11:15:02</span><span class="x"><span class="vdot accent" id="story-dot" data-pilot-anchor="story"></span>Reduce-only flatten · breach logged · partner told</span></div>
+                    <div class="held-status" data-row="status"><span class="t"></span><span class="x">declared 2 of 3 · fills 3 · the flattened fill paid commission and counts in Topstep's statistics</span></div>
+                    <div class="held-link" data-row="link"><span class="t accent">→</span><span class="x accent">Write TopstepX's irreversible lockout</span></div>
+                  </div>
+                  <div class="pf-stamp breached" id="story-stamp">Breached · no re-entry · 11:15:02</div>
+                </div>
+                <span class="push-chip" id="story-push" aria-hidden="true"><i class="dot"></i>Mia · breach · 11:15:02</span>
+              </div>
+            </div>
+          </figure>
+          <div class="story-steps" id="story-steps">
+            <div class="step active" data-story-step="1" data-n="1"><h3>It reads your fills.</h3><p>Any broker CSV with symbol, side, quantity, price, time. TradingView trade lists too. Fills are matched into round trips, duplicates dropped.</p></div>
+            <div class="step" data-story-step="2" data-n="2"><h3>It sorts your record.</h3><p>Every trade is tagged: New York entry time, trade number of the day, what came before, direction, hold time. Here, by trade of the day. Your 1st trades: <span data-sample="group.tradeOfDay.1st.n" data-format="int">45</span>, <span data-sample="group.tradeOfDay.1st.winRate" data-format="pctInt">73%</span> winners, <span data-sample="group.tradeOfDay.1st.avgReturn" data-format="pct">+0.94%</span> a trade. Your 3rd: <span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span>, <span data-sample="group.tradeOfDay.3rd.winRate" data-format="pctInt">42%</span> winners, <span data-sample="group.tradeOfDay.3rd.avgReturn" data-format="pct">−0.81%</span>.</p></div>
+            <div class="step" data-story-step="3" data-n="3"><h3>You write the rule.</h3><p>Your record shows <span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span> third trades of the day, net <span data-sample="group.tradeOfDay.3rd.totalPnl" data-format="money">−$2,346</span>. Solid: n = <span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span>, 95% interval <span data-sample="ci.tradeOfDay.3rd.lo" data-format="pct">−1.53%</span> to <span data-sample="ci.tradeOfDay.3rd.hi" data-format="pct">−0.10%</span>, which excludes your average of <span data-sample="summary.avgReturn" data-format="pct">+0.33%</span>. The draft reads: <span data-sample="drafts.0.sentence" data-format="text">I stop after 2 trades a day.</span> Keep it, strike it, or change the number. The rule is yours.</p></div>
+            <div class="step" data-story-step="4" data-n="4"><h3>The Referee holds it.</h3><p>Thu Apr 9 in this record: a loss closes at <span data-sample="trade.2026-04-09.HYDR.10:00.exit" data-format="text">11:12</span>. At <span data-sample="trade.2026-04-09.ORBX.11:15.entry" data-format="text">11:15</span> the same trader fills a short, <span data-sample="trade.2026-04-09.ORBX.11:15.gapMin" data-format="int">3</span> minutes after that losing exit, the <span data-sample="trade.2026-04-09.ORBX.11:15.tradeOfDay" data-format="int">3</span>rd trade of the day. Your rule says: no entry before 11:22. With the Referee on TopstepX, that fill is flattened about two seconds after it lands, the breach is logged, your partner is told, and the panel deep-links to Topstep's own lockout. The flatten is after the fill. The declaration and the red panel are before it.</p></div>
+            <p class="story-cta" data-reveal><button type="button" class="btn btn-secondary" id="story-run" data-action="pick">Run this on your trades</button></p>
+            <p class="footnote" data-reveal>The flatten is after the fill. Nothing on this page says otherwise.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section why" id="why" aria-label="Why the minutes after a loss">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Why the minutes after a loss</p>
+            <h2 class="display-2" data-split="lines">The rule is known. It breaks in one <em>window</em>.</h2>
+            <p class="lede" data-reveal>Not for lack of information. The window is the minutes after a losing trade, inside an evaluation, before the next entry. Three outside findings, each with its source and its caveat.</p>
+          </div>
+          <div class="cites">
+            <article class="cite" data-reveal>
+              <p class="big">78.7%</p>
+              <p class="sentence">of one firm's failed evaluations ended on a daily-loss-limit breach.</p>
+              <p class="source"><a href="https://onefunded.com/blog/trading-psychology/why-traders-fail-prop-firm-challenges/" rel="noopener">OneFunded, company blog, 2025</a></p>
+              <p class="caveat">Firm-published; no methodology given; one firm's accounts.</p>
+            </article>
+            <article class="cite" data-reveal data-reveal-delay=".08">
+              <p class="big">31.2% vs 27.0%</p>
+              <p class="sentence">Professional floor traders who lost money in the morning were about 16% more likely to take above-average risk that afternoon, and placed more and larger trades.</p>
+              <p class="source"><a href="https://ideas.repec.org/a/bla/jfinan/v60y2005i1p1-34.html" rel="noopener">Coval and Shumway, Journal of Finance 60(1), 2005</a></p>
+              <p class="caveat">CBOT proprietary traders, 1998 data; not retail, not evaluation accounts.</p>
+            </article>
+            <article class="cite" data-reveal data-reveal-delay=".16">
+              <p class="big">37%</p>
+              <p class="sentence">of traders in one vendor's dataset showed revenge trading, at about $1,917 each.</p>
+              <p class="source"><a href="https://hoc-trade.com/blogs/behavioral-risks/revenge-trading-emotional-recovery" rel="noopener">hoc-trade, from its own 500,000-account dataset</a></p>
+              <p class="caveat">The vendor's own definition and data; not peer-reviewed.</p>
+            </article>
+          </div>
+          <p class="small muted cites-line" data-reveal>Every number above is someone else's, cited with its source. Every number below is the sample's, yours, or labelled illustrative.</p>
+          <p class="footnote" data-reveal>None of these is a claim about the Referee. It has no result yet; the pilot is where it gets one.</p>
+        </div>
+      </section>
+
+      <section class="section rulebook" id="rulebook">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>The rulebook</p>
+            <h2 class="display-2" data-split="lines">Five kinds of rule. All of them <em>yours.</em></h2>
+            <p class="lede" data-reveal>You write them while calm, in your own words, with your own numbers. The analyzer drafts; you ratify. Before the session you declare the ones that bind today. The Referee's job is to hold them, not to have opinions about your trades.</p>
+          </div>
+          <div class="rulebook-grid">
+            <div class="rulebook-left">
+              <div class="rule-list" id="rulebook-list" data-reveal>
+                <div class="rule-type"><span class="kind">Max trades a day</span><p class="sentence">"I stop after 3 trades a day."</p><p class="how">Written into TopstepX's own daily trade limit at declaration. Topstep's platform refuses the 4th.</p></div>
+                <div class="rule-type"><span class="kind">Stop attached</span><p class="sentence">"A stop is on within 15 seconds of every fill. I never widen it."</p><p class="how">A fill with no stop at 15 seconds, or a stop moved away from price, is a breach: flatten.</p></div>
+                <div class="rule-type"><span class="kind">Declared size</span><p class="sentence">"2 contracts. Not 3."</p><p class="how">A fill above the declared size is a breach: flatten.</p></div>
+                <div class="rule-type"><span class="kind">Cooldown</span><p class="sentence">"After 2 losses I stop for 20 minutes."</p><p class="how">The next-trade state goes red when the 2nd loss closes; a fill inside the window is a breach: flatten.</p></div>
+                <div class="rule-type"><span class="kind">No re-entry</span><p class="sentence">"I don't enter within 10 minutes of a losing exit."</p><p class="how">Red at the losing exit; a fill inside 10 minutes is a breach: flatten.</p></div>
+              </div>
+              <p class="small muted rule-lines" data-reveal>The Referee never sets a level or a size. It holds the number you wrote.<br>Your daily loss limit is not a Referee rule. Set it in TopstepX's own Liquidate and Block.</p>
+              <p class="small convention" data-reveal>A fill inside two windows is one breach, logged against the rule that set the later bind; the other window is written on the breach record. One fill is never two breaches.</p>
+            </div>
+            <div class="rulebook-right">
+              <div class="pf-slot" id="decl-slot">
+                <div class="pf-stage" id="decl-stage">
+                  <div class="preflight" id="declaration" data-reveal aria-label="The declaration card, illustrative">
+                    <div class="pf-face" data-face="a">
+                      <div class="pf-head">Declaration · <b>Thu Apr 9</b> · 9:25 ET · illustrative</div>
+                      <ul class="pf-rows">
+                        <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Max 3 trades a day</b></span><span class="res">→ TopstepX daily limit: 3</span></li>
+                        <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Stop on within 15 s, never widened</b></span><span class="res">live feed</span></li>
+                        <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Size as declared</b></span><span class="res">your number</span></li>
+                        <li class="pf-row"><span class="tick">✓</span><span class="what"><b>Cooldown 20 min after 2 losses</b></span><span class="res">next-trade state</span></li>
+                        <li class="pf-row"><span class="tick">✓</span><span class="what"><b>No entry within 10 min of a losing exit</b></span><span class="res">next-trade state</span></li>
+                      </ul>
+                      <div class="pf-stamp declared">Declared · 5 rules · 9:25:14 ET</div>
+                      <div class="pf-foot">Hotkey ⌥D · confirmed while calm · on: agent running, key in your keychain</div>
+                    </div>
+                    <div class="pf-face" data-face="b" aria-hidden="true">
+                      <div class="pf-head">11:12 ET · <b>HYDR short closes, a loss</b> · illustrative on the sample's record</div>
+                      <p class="pf-say">Your rule says: no entry before 11:22. Your record on re-entries inside 10 minutes of a loss: <span data-sample="group.afterPrev.< 10 min after a loss.n" data-format="int">13</span> trades, an early signal, too few to cite. This is your rule. If you fill now I will flatten it.</p>
+                      <ul class="pf-rows timed">
+                        <li class="pf-row"><span class="tick neg">11:15:00</span><span class="what"><b>Filled ORBX short</b></span><span class="res">against: no re-entry</span></li>
+                        <li class="pf-row"><span class="tick accent">11:15:02</span><span class="what"><b>Reduce-only flatten · breach logged · Mia told</b></span><span class="res">after the fill</span></li>
+                        <li class="pf-row"><span class="tick">·</span><span class="what">declared 2 of 3 · fills 3</span><span class="res">counts in Topstep's statistics</span></li>
+                        <li class="pf-row"><span class="tick accent">→</span><span class="what"><b class="accent">Write TopstepX's irreversible lockout</b></span><span class="res">deep link</span></li>
+                      </ul>
+                      <div class="pf-stamp breached">Breached · no re-entry · 11:15:02</div>
+                      <div class="pf-foot">Kill switch visible · dry-run week first</div>
+                    </div>
+                  </div>
+                </div>
+                <p class="pf-note small muted">Times and the partner's name are illustrative; the two tags on the Apr 9 trade (<span data-sample="trade.2026-04-09.ORBX.11:15.gapMin" data-format="int">3</span> minutes after a losing exit, <span data-sample="trade.2026-04-09.ORBX.11:15.tradeOfDay" data-format="int">3</span>rd trade of the day) are the engine's on the fictional sample, which trades shares. The Referee runs on TopstepX futures; the mechanics are the same.</p>
+                <div class="state-off" data-reveal><i class="dot"></i><span class="mono"><b>Referee off · agent closed</b> · key expired, sign in to Topstep again · TopstepX open on another device · dry-run week: logging, not flattening · paused: wrong flatten, post-mortem pending · kill switch on</span><span class="line">The panel never looks on when it is off. Your partner is told.</span></div>
+              </div>
+              <div class="day-card" id="day-card" data-reveal>
+                <p class="dc-head">Thu Apr 9 · private · illustrative</p>
+                <p class="dc-score">Rules kept 4 of 5</p>
+                <div class="dc-pills">
+                  <span class="pill kept">✓ Max 3 trades</span><span class="pill kept">✓ Stop ≤ 15 s</span><span class="pill kept">✓ Size</span><span class="pill kept">✓ Cooldown</span>
+                  <span class="pill breached">✗ No re-entry · breached 11:15:00 · flattened 11:15:02</span>
+                </div>
+                <p class="dc-declared">Declared before the fill: 2 of 3 fills</p>
+                <p class="dc-cost" data-whatif>One breach cost you $2 in commission, plus two seconds of price.</p>
+                <div class="cftc-441"><span class="cftc-label">Hypothetical-results statement</span><p class="cftc-text">HYPOTHETICAL PERFORMANCE RESULTS HAVE MANY INHERENT LIMITATIONS, SOME OF WHICH ARE DESCRIBED BELOW. NO REPRESENTATION IS BEING MADE THAT ANY ACCOUNT WILL OR IS LIKELY TO ACHIEVE PROFITS OR LOSSES SIMILAR TO THOSE SHOWN. IN FACT, THERE ARE FREQUENTLY SHARP DIFFERENCES BETWEEN HYPOTHETICAL PERFORMANCE RESULTS AND THE ACTUAL RESULTS SUBSEQUENTLY ACHIEVED BY ANY PARTICULAR TRADING PROGRAM. ONE OF THE LIMITATIONS OF HYPOTHETICAL PERFORMANCE RESULTS IS THAT THEY ARE GENERALLY PREPARED WITH THE BENEFIT OF HINDSIGHT. IN ADDITION, HYPOTHETICAL TRADING DOES NOT INVOLVE FINANCIAL RISK, AND NO HYPOTHETICAL TRADING RECORD CAN COMPLETELY ACCOUNT FOR THE IMPACT OF FINANCIAL RISK IN ACTUAL TRADING. FOR EXAMPLE, THE ABILITY TO WITHSTAND LOSSES OR TO ADHERE TO A PARTICULAR TRADING PROGRAM IN SPITE OF TRADING LOSSES ARE MATERIAL POINTS WHICH CAN ALSO ADVERSELY AFFECT ACTUAL TRADING RESULTS. THERE ARE NUMEROUS OTHER FACTORS RELATED TO THE MARKETS IN GENERAL OR TO THE IMPLEMENTATION OF ANY SPECIFIC TRADING PROGRAM WHICH CANNOT BE FULLY ACCOUNTED FOR IN THE PREPARATION OF HYPOTHETICAL PERFORMANCE RESULTS AND ALL OF WHICH CAN ADVERSELY AFFECT ACTUAL TRADING RESULTS.</p></div>
+                <p class="dc-replay">The replay says nothing about what that day would have made. The pilot measures breaches per trader-week, not P&amp;L.</p>
+                <p class="dc-share">No share button.</p>
+              </div>
+              <p class="small muted dc-caption" data-reveal>The $2 is the sample's commission on the two fills; the two seconds of price no export can show. Private by design: the shareable thing is the Record Card, one stat, with the statement baked in.</p>
+            </div>
+          </div>
+          <div class="state-chips" data-reveal>
+            <div class="state-chip"><span class="pill declared">Declared</span><span>confirmed before the open, timestamped</span></div>
+            <div class="state-chip"><span class="pill kept">Kept</span><span>the session ended without a breach of it</span></div>
+            <div class="state-chip"><span class="pill breached">Breached</span><span>a fill against it: flattened, logged, pushed to your partner</span></div>
+            <div class="state-chip"><span class="pill undeclared">Undeclared</span><span>a fill with no declaration before it; logged separately, counted against declaration-before-fill, not against breaches</span></div>
+            <div class="state-chip off"><span class="pill off">Off</span><span>agent closed · key expired, sign in to Topstep again · TopstepX open on another device · dry-run week, logging not flattening · paused after a wrong flatten, post-mortem pending · kill switch on. The panel never looks on when it is off.</span></div>
+          </div>
+          <div class="callout" data-reveal>
+            <p class="callout-head">What "pre-trade" means here</p>
+            <p>Two things, and only two. The declaration you confirm before the session, and the next-trade state the Referee computes the moment the previous trade closes, so the panel is red before your hand moves. No platform exposes a pre-submission hook, so the flatten itself is after the fill, about two seconds after. Your record shows the fill. The breach log shows the rule.</p>
+          </div>
+          <p class="section-cta" data-reveal><button type="button" class="btn-ghost" data-action="demo">See the three drafts on the sample →</button></p>
+          <p class="footnote" data-reveal>Draft said 2. You set 3. The rule is yours.</p>
+        </div>
+      </section>
+
+      <section class="section features" id="features">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>What the $19 is for</p>
+            <h2 class="display-2" data-split="lines">Topstep's lockout is free. Keep it. The Referee is for the hour <em>before</em> you would reach for it.</h2>
+            <p class="lede" data-reveal>TopstepX ships irreversible lockouts and a Liquidate-and-Block daily loss limit at no charge, and they are the only controls nobody can bypass. The Referee is an add-on to them, never a substitute. It holds the rules the platform doesn't know about: yours.</p>
+          </div>
+          <div class="bento">
+            <article class="tile" data-reveal>
+              <div class="loop" data-loop="declare" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <g class="row r1"><rect x="14" y="12" width="8" height="8" rx="2"/><rect x="30" y="14" width="120" height="4" rx="2"/></g>
+                  <g class="row r2"><rect x="14" y="27" width="8" height="8" rx="2"/><rect x="30" y="29" width="150" height="4" rx="2"/></g>
+                  <g class="row r3"><rect x="14" y="42" width="8" height="8" rx="2"/><rect x="30" y="44" width="90" height="4" rx="2"/></g>
+                  <g class="row r4"><rect x="14" y="57" width="8" height="8" rx="2"/><rect x="30" y="59" width="130" height="4" rx="2"/></g>
+                  <g class="row r5"><rect x="14" y="72" width="8" height="8" rx="2"/><rect x="30" y="74" width="160" height="4" rx="2"/></g>
+                  <g class="stamp"><rect x="128" y="36" width="80" height="22" rx="11"/><text x="168" y="51" text-anchor="middle">9:25:14</text></g>
+                </svg>
+              </div>
+              <p class="eyebrow">Declare</p><h3>Confirm your rules before the session.</h3><p>A hotkey, a card, a timestamp. Max trades is written straight into TopstepX's own daily limit while you are calm.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".08">
+              <div class="loop" data-loop="state" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <rect class="panel" x="14" y="16" width="192" height="68" rx="6"/>
+                  <rect class="rule" x="14" y="16" width="3" height="68" rx="1"/>
+                  <text class="clk c1" x="34" y="48">11:12</text><text class="clk c2" x="34" y="48">11:17</text><text class="clk c3" x="34" y="48">11:22</text>
+                  <text class="msg" x="34" y="70">NO ENTRY BEFORE 11:22</text>
+                </svg>
+              </div>
+              <p class="eyebrow">Red before your hand moves</p><h3>The next-trade state.</h3><p>When a trade closes, the panel already knows what your rule says about the next one: "no entry before 11:22".</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".16">
+              <div class="loop" data-loop="flatten" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <text class="t-fill" x="14" y="30">11:15:00 FILL</text><rect class="b-fill" x="100" y="20" width="106" height="12" rx="3"/>
+                  <text class="t-flat" x="14" y="58">11:15:02 FLAT</text><rect class="b-flat" x="100" y="48" width="106" height="12" rx="3"/>
+                  <g class="lock"><rect x="100" y="70" width="84" height="20" rx="10"/><text x="142" y="84" text-anchor="middle">→ LOCKOUT</text></g>
+                </svg>
+              </div>
+              <p class="eyebrow">Flatten</p><h3>About two seconds after a fill against your rule.</h3><p>Reduce-only. The fill stands on your record and in Topstep's statistics; the breach goes on your breach log. One flatten escalates: a deep link writes Topstep's own irreversible lockout.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".24">
+              <div class="loop" data-loop="partner" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <rect class="phone" x="80" y="6" width="60" height="110" rx="10"/>
+                  <g class="push"><rect x="86" y="22" width="48" height="26" rx="5"/><text x="90" y="33">BREACH</text><text x="90" y="43">11:15:02</text></g>
+                </svg>
+              </div>
+              <p class="eyebrow">Partner</p><h3>One read-only seat, free.</h3><p>Breach pushes to one person you choose. They see the breach, and they see when the Referee is off.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".32">
+              <div class="loop" data-loop="log" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <g class="day d1"><rect x="14" y="24" width="34" height="50" rx="4"/><text x="31" y="54" text-anchor="middle">4/5</text></g>
+                  <g class="day d2"><rect x="53" y="24" width="34" height="50" rx="4"/><text x="70" y="54" text-anchor="middle">5/5</text></g>
+                  <g class="day d3"><rect x="92" y="24" width="34" height="50" rx="4"/><text x="109" y="54" text-anchor="middle">5/5</text></g>
+                  <g class="day d4 low"><rect x="131" y="24" width="34" height="50" rx="4"/><text x="148" y="54" text-anchor="middle">3/5</text></g>
+                  <g class="day d5"><rect x="170" y="24" width="34" height="50" rx="4"/><text x="187" y="54" text-anchor="middle">5/5</text></g>
+                </svg>
+              </div>
+              <p class="eyebrow">Breach log</p><h3>Next week's declaration, honest.</h3><p>Declared, kept, breached, undeclared: each day scored privately. The history is what makes the next declaration a real one.</p>
+            </article>
+            <article class="tile" data-reveal data-reveal-delay=".4">
+              <div class="loop" data-loop="card" aria-hidden="true">
+                <svg viewBox="0 0 220 100">
+                  <rect class="card" x="14" y="8" width="192" height="84" rx="6"/>
+                  <text class="title" x="24" y="26" textLength="170" lengthAdjust="spacingAndGlyphs">RULES KEPT · 23 of 25 · week of Apr 6</text>
+                  <path class="river" d="M24 46 C50 44 60 50 80 42 S110 36 130 40 S170 30 196 28"/>
+                  <g class="stmt"><rect x="24" y="58" width="172" height="26" rx="3"/><text x="30" y="69">HYPOTHETICAL-RESULTS STATEMENT</text><text x="30" y="79">full text on the real card</text></g>
+                </svg>
+              </div>
+              <p class="eyebrow">Record Card</p><h3>One stat, shareable.</h3><p>A PNG of your rules-kept score with the hypothetical-results statement baked in, in full. Private day cards have no share button.</p>
+              <p class="small muted tile-caption">Illustrative. The number is invented; the statement is not.</p>
+            </article>
+          </div>
+          <p class="footnote" data-reveal>An add-on to Topstep's lockout, never a substitute.</p>
+          <p class="section-cta" data-reveal><a class="btn-ghost" href="#limits" data-scroll-to>Read the honest limits ↓</a></p>
+        </div>
+      </section>
+
+      <section class="section partner" id="partner">
+        <div class="wrap">
+          <div class="partner-grid">
+            <div class="partner-copy">
+              <p class="eyebrow" data-reveal>The partner</p>
+              <h2 class="display-2" data-split="lines">Someone sees the breach. That is the <em>point.</em></h2>
+              <p class="lede" data-reveal>Every Referee account comes with one read-only partner seat, free for them. Your partner sees your declaration each morning and every breach push: the rule, the time, never your P&amp;L. They cannot trade and cannot change a rule. If the agent is closed or the key is revoked mid-session, they are told the Referee is off.</p>
+              <p class="small muted" data-reveal>Names and times are illustrative. The rule and the mechanics are the product's.</p>
+              <p class="section-cta" data-reveal><a class="btn-ghost" href="#signup" data-scroll-to>Invite your partner when you join ↓</a></p>
+              <p class="footnote" data-reveal>Your partner sees the breach. And the bypass.</p>
+            </div>
+            <div class="push-mock" data-reveal aria-label="Illustrative partner pushes">
+              <p class="mock-head">Illustrative</p>
+              <div class="push-card"><p class="app">The Referee · 11:15</p><p>Sam filled 3 minutes after a losing exit. Rule: no entry within 10 minutes. Flattened at 11:15:02. Breach 1 today.</p></div>
+              <div class="push-card off"><p class="app">The Referee · 13:02</p><p>The Referee is off: agent closed. Sam's rules are not being held.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section limits" id="limits">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Honest limits</p>
+            <h2 class="display-2" data-split="lines">Read this <em>before</em> you pay.</h2>
+            <p class="lede" data-reveal>Everything here is also in the FAQ. It is here so you do not have to look for it.</p>
+          </div>
+          <ol class="limits-list" data-reveal>
+            <li><span class="n">01</span><h3>It cannot stop your click.</h3><p>No trading platform exposes a hook before an order is submitted. The Referee answers the fill: about two seconds after a fill that breaks a declared rule, a reduce-only close lands and the breach is logged. The flattened fill paid commission and counts in Topstep's own statistics. "Pre-trade" means two things only: the declaration before the click, and the next-trade state computed when the previous trade closes.</p></li>
+            <li><span class="n">02</span><h3>It runs on your machine, and you can turn it off.</h3><p>The agent runs locally and holds your API key in the operating system's keychain. The Referee stops holding your rules when the agent is closed, the key is revoked, or TopstepX is opened on another device. It records that gap as a bypass, the panel shows Off, and your partner is told. If the pilot shows bypass is common, we will say so, and the product becomes the declaration and the partner at a lower price.</p></li>
+            <li><span class="n">03</span><h3>An add-on, never a substitute.</h3><p>TopstepX's own lockouts and daily loss limit are the only controls nobody can bypass. Keep them on. After one flatten the Referee deep-links you to Topstep's irreversible lockout; it does not replace it.</p></li>
+            <li><span class="n">04</span><h3>TopstepX only, at launch.</h3><p>Live flattening needs Topstep's ProjectX API key, which you buy from Topstep ($29 a month, $14.50 with their code), and it covers Combine and Express Funded accounts; Topstep excludes Live Funded accounts from the API. Everyone else, including Live Funded graduates, Tradovate evaluation, Apex and Rithmic traders, gets declare-and-reconcile: a hotkey declaration, a one-tap "stopped out", overnight reconciliation from your export, undeclared trades logged as undeclared. It nudges; it cannot flatten.</p></li>
+            <li class="hl"><span class="n">05</span><h3>Nothing is proven yet.</h3><p>The Referee is designed to reduce daily-loss breaches and resets. The Topstep pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet. We will publish the number either way.</p></li>
+            <li><span class="n">06</span><h3>Two seconds is a target, not a guarantee.</h3><p>Two seconds is the design target measured on the ProjectX feed in dry-run. The pilot publishes the real latency. Reduce-only orders are to be confirmed with Topstep before the first enforced week.</p></li>
+            <li><span class="n">07</span><h3>Wrong flattens.</h3><p>Partial fills, scale-ins, bracket children, flips, reconnects and token expiry are exactly where a flatten can be wrong. So: your first week is a dry run that flattens nothing; there is a visible kill switch; any wrong flatten pauses the Referee on that account, credits the commission, and gets a post-mortem before it is switched back on. The gate is under one wrong flatten per hundred trader-weeks.</p></li>
+            <li><span class="n">08</span><h3>Not advice.</h3><p>The Referee never chooses a trade, a level or a size. It holds the sentence you wrote and the number you put in it. The analyzer shows your record; it does not tell you what to do with it.</p></li>
+            <li><span class="n">09</span><h3>Outside the United States.</h3><p>At launch the flatten is geofenced to US accounts. EU users get declare-and-reconcile and partner pushes, which decide nothing automatically. No cohort comparisons anywhere outside the US.</p></li>
+            <li><span class="n">10</span><h3>Not in year one.</h3><p>No order ticket, no veto, no AI chat, no mobile app, no NinjaTrader, no market replay, no live equities rung, no firm-paid contracts, and no comparisons of you with other traders, of any kind.</p></li>
+          </ol>
+          <p class="footnote" data-reveal>If the pilot says it doesn't work, this page will say so.</p>
+        </div>
+      </section>
+
+      <section class="section pricing" id="pricing">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Pricing</p>
+            <h2 class="display-2" data-split="lines">One plan. Not for sale until the pilot says it <em>works.</em></h2>
+            <p class="lede" data-reveal>No AI credits, no auto-charging trial, no tiers. The price is published now so you can judge the pilot's result against it.</p>
+          </div>
+          <div class="pricing-grid pricing-cards">
+            <article class="price-card free" data-reveal>
+              <p class="eyebrow">Free</p>
+              <p class="price"><span class="num">$0</span></p>
+              <p class="price-sub">forever, in your browser</p>
+              <ul class="price-list">
+                <li>The analyzer: edges, leaks, stop check, breakdowns</li>
+                <li>Three draft rules from your record</li>
+                <li>One manual rule, kept by hand</li>
+                <li>Your private rules-kept score</li>
+                <li>The Record Card</li>
+              </ul>
+              <div class="price-cta"><button type="button" class="btn btn-secondary" data-action="pick">Run the free analyzer</button></div>
+            </article>
+            <article class="price-card referee" data-reveal data-reveal-delay=".08">
+              <p class="eyebrow">Referee</p>
+              <p class="price"><span class="num">$19</span> a month</p>
+              <p class="price-sub">or $169 a year ($14.08 a month)</p>
+              <p class="price-chip"><span class="mchip"><i class="dot"></i>Topstep Combine pilot · late December 2026</span></p>
+              <ul class="price-list">
+                <li>Live connection to TopstepX via the ProjectX API</li>
+                <li>Unlimited rules, declaration, next-trade state</li>
+                <li>Flatten, cooldown, escalation to Topstep's own lockout</li>
+                <li>One read-only partner seat, free for them</li>
+                <li>Declare-and-reconcile for your other accounts</li>
+                <li>14-day money-back · one-click cancel · your rulebook and history kept between Combines</li>
+              </ul>
+              <div class="price-cta"><a class="btn btn-primary" href="#signup" data-scroll-to data-magnetic>Join the waitlist</a><small>Pilot traders pay this price. It is the price we are testing, not a discount.</small></div>
+            </article>
+            <article class="price-card key" data-reveal data-reveal-delay=".16">
+              <p class="eyebrow">Topstep's API key</p>
+              <p class="price"><span class="num">$29</span> a month</p>
+              <p class="price-sub">$14.50 with Topstep's code</p>
+              <p class="key-note">Bought from Topstep, by Topstep's published pricing. It never reaches our server. All-in, the Referee plus the key is $33.50 to $48 a month. We are asking Topstep to waive it for Referee users; nothing is promised until it is in writing.</p>
+            </article>
+          </div>
+          <div class="pricing-notes" data-reveal>
+            <div><strong>Per Combine, not forever.</strong><p>Cancel when your Combine ends. Come back on the next one and your rulebook, breach history and partner are where you left them.</p></div>
+            <div><strong>Not for sale today.</strong><p>The pilot runs first, at this price, with the money-back. If its breaches-per-trader-week number does not hold, the Referee does not launch at this price, and this page says so.</p></div>
+          </div>
+          <p class="footnote" data-reveal>One plan. No credits. No auto-charging trial.</p>
+        </div>
+      </section>
+
+      <section class="section lab shrink-lab" id="shrink-lab">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Honest statistics</p>
+            <h2 class="display-2" data-split="lines">Three <em>lucky</em> trades are not a rule.</h2>
+            <p class="lede" data-reveal>Every group's average is shrunk toward your overall average in proportion to how few trades it has. The fewer the trades, the less the engine believes them, and a draft rule cites a number only when the group is solid and its 95% interval excludes your average. Here is the exact rule, on the sample.</p>
+          </div>
+          <div class="lab-grid shrink-grid">
+            <div class="lab-left">
+              <div class="formula-card" data-reveal>
+                <code class="formula" id="shrink-formula">adjusted = (n × group avg + 10 × overall avg) ÷ (n + 10)</code>
+                <p class="small muted">10 is the number of phantom average trades mixed into every group.</p>
+              </div>
+              <div class="chip-row" id="shrink-examples" role="group" aria-label="Examples" data-reveal>
+                <button type="button" class="mchip" data-example data-n="3" data-raw="-1.17" data-label="9:45–10:15 ET" data-sample-raw="group.time.9:45–10:15.avgReturn" aria-pressed="true">9:45–10:15 ET · 3 trades · raw <span data-sample="group.time.9:45–10:15.avgReturn" data-format="pct">−1.17%</span></button>
+                <button type="button" class="mchip" data-example data-n="3" data-raw="4" data-label="3 lucky trades" data-hypothetical aria-pressed="false">3 lucky trades at +4.00%</button>
+                <button type="button" class="mchip" data-example data-n="5" data-raw="1.07" data-label="Held under 15 min" data-sample-raw="group.hold.Under 15 min.avgReturn" aria-pressed="false">Held under 15 min · 5 trades · raw <span data-sample="group.hold.Under 15 min.avgReturn" data-format="pct">+1.07%</span></button>
+                <button type="button" class="mchip" data-example data-n="5" data-raw="-2.55" data-label="Overnight" data-sample-raw="group.hold.Overnight.avgReturn" aria-pressed="false">Overnight · 5 trades · raw <span data-sample="group.hold.Overnight.avgReturn" data-format="pct">−2.55%</span></button>
+                <button type="button" class="mchip" data-example data-n="45" data-raw="0.94" data-label="1st trade of the day" data-sample-raw="group.tradeOfDay.1st.avgReturn" aria-pressed="false">1st trade of the day · 45 trades · raw <span data-sample="group.tradeOfDay.1st.avgReturn" data-format="pct">+0.94%</span></button>
+              </div>
+              <ul class="rules" data-reveal>
+                <li>Every group's average is shrunk toward your overall average: adjusted = (n × group average + 10 × overall average) ÷ (n + 10). Ten phantom average trades are mixed into every group.</li>
+                <li>Under 5 trades: too few. Faded in every table, never called an edge or a leak. 5 to 14: early signal. 15 or more: solid.</li>
+                <li>An edge needs its shrunk average above your overall average, a positive plain average, and a plain average at least half again above your overall (your average plus half of it).</li>
+                <li>A leak is a group that loses money: its plain average is negative. A weak spot is profitable but averages under half of your overall average.</li>
+                <li>A draft cites a group only when it is solid (15 or more trades) and the 95% interval on its average excludes your overall average. Under that, the draft is still offered, as your rule with no number.</li>
+              </ul>
+              <p data-reveal><a class="btn-ghost" href="https://github.com/CezarAster/mytradepilot/blob/main/src/core/analyze.ts" rel="noopener">Read the rule in src/core/analyze.ts →</a></p>
+              <p class="footnote" data-reveal>Shrinkage makes the report quieter than your spreadsheet. That is the point.</p>
+            </div>
+            <div class="lab-right">
+              <div class="figure-panel" data-reveal>
+                <svg id="shrink-diagram" viewBox="0 0 560 320" width="100%" aria-hidden="true">
+                  <g class="grid-lines">
+                    <path d="M46.5 0V320M93.5 0V320M140.5 0V320M186.5 0V320M233.5 0V320M280.5 0V320M326.5 0V320M373.5 0V320M420.5 0V320M466.5 0V320M513.5 0V320M0 40.5H560M0 80.5H560M0 120.5H560M0 160.5H560M0 200.5H560M0 240.5H560M0 280.5H560"/>
+                  </g>
+                  <line class="axis" x1="40" y1="180" x2="520" y2="180"/>
+                  <g class="ticks" id="shrink-ticks"></g>
+                  <g id="shrink-avg"><line x1="239.6" y1="150" x2="239.6" y2="210" class="avg-tick"/><text x="239.6" y="226" text-anchor="middle" class="lbl">your average <tspan id="shrink-avg-label" data-sample="summary.avgReturn" data-format="pct">+0.33%</tspan></text></g>
+                  <line id="shrink-tether" x1="130" y1="112" x2="238" y2="180" class="tether"/>
+                  <g id="shrink-raw"><circle id="shrink-raw-dot" cx="130" cy="112" r="7" class="raw"/><text id="shrink-raw-lbl" x="130" y="94" text-anchor="middle" class="lbl">raw</text></g>
+                  <g id="shrink-adj"><circle id="shrink-adj-dot" cx="238" cy="180" r="8" class="adj"/><text id="shrink-adj-lbl" x="238" y="290" text-anchor="middle" class="lbl strong">what the report says</text></g>
+                </svg>
+                <p class="readout mono" id="shrink-readout">n = 3 · raw −1.17% · adjusted −0.01% <span class="pill few" id="shrink-badge">too few</span></p>
+                <p class="call-line" id="shrink-call">The report would call this: nothing, too few trades.</p>
+                <div class="slider-row">
+                  <label for="shrink-n">Trades in this group</label>
+                  <input type="range" id="shrink-n" min="1" max="45" step="1" value="3" />
+                  <output class="bubble mono" id="shrink-n-out" for="shrink-n">3</output>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section method" id="method">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Methodology and data</p>
+            <h2 class="display-2" data-split="lines">Nothing to take on faith.</h2>
+          </div>
+          <div class="cols">
+            <div data-reveal><span class="mono small">src/core · test/</span>Open engine: src/core, tests in test/. The three drafts come from src/core/drafts.ts.</div>
+            <div data-reveal data-reveal-delay=".08"><span class="mono small">% per trade</span>Unit is % return per trade, so results compare across sizes.</div>
+            <div data-reveal data-reveal-delay=".16"><span class="mono small">n &lt; 5 → faded</span>Groups under 5 trades are faded; nothing under 5 is ever called an edge, a leak or a draft.</div>
+          </div>
+          <div class="proof">
+            <div class="figure-panel" data-reveal>
+              <svg id="privacy-wire" viewBox="0 0 560 300" width="100%" aria-hidden="true">
+                <g class="grid-lines"><path d="M70.5 0V300M140.5 0V300M210.5 0V300M280.5 0V300M350.5 0V300M420.5 0V300M490.5 0V300M0 50.5H560M0 100.5H560M0 150.5H560M0 200.5H560M0 250.5H560"/></g>
+                <path id="wire-path" class="wire" d="M150 120 H200 M380 120 H420"/>
+                <path id="wire-pulse" class="wire-pulse" d="M150 120 H200 M380 120 H420"/>
+                <path class="wire-branch" d="M290 170 V215"/>
+                <g class="node"><rect x="30" y="92" width="120" height="56" rx="8"/><text x="90" y="124" text-anchor="middle" class="node-lbl">Your CSV</text></g>
+                <g class="node node-tab"><rect x="200" y="70" width="180" height="100" rx="8"/><text x="290" y="112" text-anchor="middle" class="node-lbl">This browser tab</text><text x="290" y="134" text-anchor="middle" class="node-sub">(engine runs here)</text></g>
+                <g class="node"><rect x="420" y="92" width="110" height="56" rx="8"/><text x="475" y="124" text-anchor="middle" class="node-lbl">Your report</text></g>
+                <g class="node node-off"><rect x="230" y="215" width="120" height="40" rx="8"/><text x="290" y="240" text-anchor="middle" class="node-lbl">Servers</text></g>
+                <g class="badge"><rect x="196" y="266" width="188" height="22" rx="11"/><text x="290" y="281" text-anchor="middle">0 requests when you drop a file</text></g>
+              </svg>
+            </div>
+            <ul class="checklist" data-reveal>
+              <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2"/><path d="M6 8V6a3 3 0 016 0v2"/></svg><span>Check it yourself: open your browser's developer tools, Network tab, then drop a file. Nothing goes out.</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2"/><path d="M6 8V6a3 3 0 016 0v2"/></svg><span>Or turn off your Wi-Fi after the page loads and drop a file. It still works.</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="8" width="12" height="8" rx="2"/><path d="M6 8V6a3 3 0 016 0v2"/></svg><span>The command line prints the same report: <code>npm run report -- --tz America/New_York your-trades.csv</code>. <a class="btn-ghost" href="https://github.com/CezarAster/mytradepilot" rel="noopener">Read the engine on GitHub →</a></span></li>
+            </ul>
+          </div>
+          <p class="small muted fine-print" data-reveal>What this page does request: the page itself, its styles and scripts, fonts from Google Fonts, and the fictional sample file from this site (for the river above and the sample button). Nothing in those requests is about you or your trades.</p>
+          <div class="method-data" id="method-data">
+            <p class="eyebrow" data-reveal>What leaves your machine, and what never does</p>
+            <div class="cols">
+              <div data-reveal><strong>The free analyzer</strong>Nothing. The file is read in this tab. There is no upload button because there is nothing to upload to.</div>
+              <div data-reveal data-reveal-delay=".08"><strong>The Referee's local agent</strong>Sends your declarations, breach events and an "agent on / agent off" heartbeat to our server, so your partner can be told and your history kept. It never sends your API key, which stays in your operating system's keychain, and it never sends your order stream.</div>
+              <div data-reveal data-reveal-delay=".16"><strong>Our server</strong>Holds your rulebook, breach log and partner pushes, and nothing from the analyzer. Encrypted at rest and in transit, two-factor sign-in, export and deletion on request, and we tell you if we are breached. We treat the company as a financial institution under the Gramm-Leach-Bliley Act from the first byte we store.</div>
+            </div>
+          </div>
+          <p class="footnote" data-reveal>There is no upload button because there is nothing to upload to.</p>
+        </div>
+      </section>
+
+      <section class="section export" id="export">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Get your file</p>
+            <h2 class="display-2" data-split="lines">Your export takes about a minute.</h2>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Export source" data-reveal>
+            <button type="button" class="mchip tab" role="tab" id="tab-tv" aria-selected="true" aria-controls="panel-tv">TradingView</button>
+            <button type="button" class="mchip tab" role="tab" id="tab-broker" aria-selected="false" aria-controls="panel-broker" tabindex="-1">Any broker</button>
+          </div>
+          <div class="panels" data-reveal>
+            <div class="panel-export" id="panel-tv" role="tabpanel" aria-labelledby="tab-tv">
+              <div class="menu-path" id="menu-path" aria-hidden="true"><span class="mchip">Bar Replay / Strategy Tester</span><span class="arrow">→</span><span class="mchip">List of trades</span><span class="arrow">→</span><span class="mchip">Export ▸ CSV</span></div>
+              <ol class="steps-list">
+                <li>Open Bar Replay or the Strategy Tester.</li>
+                <li>Open the List of trades tab.</li>
+                <li>Export → CSV.</li>
+                <li>Drop it here and pick your chart's time zone in the analyzer.</li>
+              </ol>
+              <p class="small muted">Strategy Tester and Bar Replay exports include each trade's worst point, so the stop check runs on them.</p>
+            </div>
+            <div class="panel-export" id="panel-broker" role="tabpanel" aria-labelledby="tab-broker" hidden>
+              <p>Export your executions or fills as CSV, not your positions. The file needs columns for symbol, side, quantity, price and time; common column names (ticker, action, shares, fill price, timestamp…) are detected automatically. Fills are matched into round-trip trades, first in, first out.</p>
+              <p class="small muted">Optional: a Worst % column on the closing fill turns on the stop check.</p>
+            </div>
+          </div>
+          <p class="footnote" data-reveal>If the page can't read a file it says so and lists what it expected. Nothing is sent either way.</p>
+          <div class="cta-row" data-reveal>
+            <button type="button" class="btn btn-primary" data-action="pick">Analyze my trades</button>
+            <button type="button" class="btn btn-secondary" data-action="help">Which files work?</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section roadmap" id="roadmap" aria-label="Rungs">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>Rungs</p>
+            <h2 class="display-2" data-split="lines">From analyzer to pilot.</h2>
+            <p class="lede" data-reveal>The free analyzer and the rulebook are step one. The Referee's live rung is TopstepX. Everyone else gets the floor: declaration, reconciliation and the partner, nudge-only.</p>
+          </div>
+          <div class="timeline" id="timeline">
+            <svg class="line" viewBox="0 0 1000 2" preserveAspectRatio="none" aria-hidden="true"><line id="roadmap-line" x1="0" y1="1" x2="1000" y2="1" stroke="#344050" stroke-width="2"/><line id="roadmap-line-fill" x1="0" y1="1" x2="1000" y2="1" stroke="#5B9CFF" stroke-width="2" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>
+            <ol class="milestones" id="milestones">
+              <li class="milestone now" data-ms><span class="when">Now</span><h3>Free analyzer and rulebook</h3><p>Drop an export, see your record, draft three rules, keep one by hand, score your own rules-kept days privately.</p></li>
+              <li class="milestone" data-ms><span class="when">To December 2026</span><h3>The agent, in dry-run</h3><p>A local agent on your machine reads the ProjectX feed and logs what it would have flattened, without flattening. Declare-and-reconcile for everyone else. The legal memo lands before anyone pays.</p></li>
+              <li class="milestone" data-ms><span class="when">Late December 2026</span><h3>Topstep Combine pilot</h3><p>50 Combine traders, 60 days, the real price with the 14-day money-back, alternating dry-run and enforced weeks. Measured in breaches per trader-week.</p></li>
+              <li class="milestone" data-ms><span class="when">Late December 2026</span><h3>Declare-and-reconcile pilot</h3><p>25 Apex or Tradovate-evaluation traders: hotkey declaration, one-tap "stopped out", overnight reconciliation from your export, the partner. Nudge-only, and labelled so.</p></li>
+              <li class="milestone" data-ms><span class="when">Later</span><h3>MetaApi and cTrader</h3><p>Read-only feeds as a nudge tier, after the pilot and after 300 paying traders, not before.</p></li>
+            </ol>
+          </div>
+          <div class="roadmap-foot">
+            <div class="roadmap-cta" data-reveal>
+              <a class="btn btn-primary" href="#signup" data-scroll-to data-magnetic>Join the waitlist</a>
+              <small>Pilot traders pay the real price, with the 14-day money-back.</small>
+              <p class="footnote">No launch date beyond the pilot is promised. You'll hear from us when there is something to try.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section signup-sec" id="signup" aria-label="Waitlist">
+        <div class="wrap">
+          <div class="signup-band">
+            <div class="signup-copy">
+              <h2 class="display-2" id="signup-h" data-split="lines">Hold your rules on the Topstep pilot.</h2>
+              <p>Late December 2026: 50 Topstep Combine traders, 60 days, alternating dry-run and enforced weeks, at the real price with the 14-day money-back. Everyone else on the list gets declare-and-reconcile and the partner seat, nudge-only, when it ships. The Referee is designed to reduce daily-loss breaches and resets; the pilot measures breaches per trader-week, and we publish the number either way.</p>
+            </div>
+            <div class="signup-side">
+              <p class="signup-context mono" id="signup-context" hidden>Joining with 3 draft rules. They stay in this tab; we get your email.</p>
+              <form class="signup-form" id="signup-form" novalidate action="https://buttondown.com/api/emails/embed-subscribe/MyTradePilot" method="post" target="_blank">
+                <label for="signup-email" class="sr-only">Email address</label>
+                <input type="email" id="signup-email" name="email" required autocomplete="email" placeholder="you@example.com" />
+                <label for="signup-platform" class="sr-only">Where do you trade?</label>
+                <select id="signup-platform" name="tag">
+                  <option value="">Where do you trade? (optional)</option>
+                  <option value="platform-topstepx">TopstepX</option>
+                  <option value="platform-tradovate">Tradovate evaluation</option>
+                  <option value="platform-apex">Apex</option>
+                  <option value="platform-rithmic">Rithmic</option>
+                  <option value="platform-ctrader">cTrader</option>
+                  <option value="platform-metatrader">MetaTrader</option>
+                  <option value="platform-other">Other</option>
+                </select>
+                <label class="check" for="signup-partner"><input type="checkbox" id="signup-partner" name="tag" value="partner-in-mind" /> I have a partner in mind</label>
+                <button type="submit" class="btn btn-primary" id="signup-btn" data-magnetic><span class="pilot-slot" id="wl-pilot" data-pilot-anchor="waitlist" aria-hidden="true"></span>Join the Referee waitlist</button>
+              </form>
+              <p class="signup-msg" role="status" id="signup-msg"></p>
+              <div class="signup-invite" id="signup-invite" hidden>
+                <p class="invite-head">Invite your partner</p>
+                <p class="small">One read-only seat is free and gets your breach pushes. Send this yourself; we don't take their address.</p>
+                <label for="invite-text" class="sr-only">Invite text</label>
+                <textarea id="invite-text" class="invite-text" readonly rows="5">I'm joining the Referee pilot on MyTradePilot. If I break one of my own trading rules, you'd get the push, nothing else. Here's the page: https://cezaraster.github.io/mytradepilot/#partner</textarea>
+                <div class="cta-row">
+                  <button type="button" class="btn btn-secondary" id="invite-copy" data-action="copy-invite">Copy the invite</button>
+                  <a class="btn btn-secondary" id="invite-mail" href="mailto:?subject=Be%20my%20Referee%20partner&amp;body=I%27m%20joining%20the%20Referee%20pilot%20on%20MyTradePilot.%20If%20I%20break%20one%20of%20my%20own%20trading%20rules%2C%20you%27d%20get%20the%20push%2C%20nothing%20else.%20Here%27s%20the%20page%3A%20https%3A%2F%2Fcezaraster.github.io%2Fmytradepilot%2F%23partner">Open in email</a>
+                </div>
+              </div>
+              <p class="small-print">We get your email, your platform and whether you have a partner in mind. Never your trades, never your rules, never anyone else's address. Unsubscribe anytime. <span class="mchip">trades sent: 0 bytes</span></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section faq" id="faq">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="eyebrow" data-reveal>FAQ</p>
+            <h2 class="display-2" data-split="lines">Questions, answered straight.</h2>
+          </div>
+          <div class="faq-list" data-reveal>
+            <details><summary>Topstep's lockout is free. What is the $19 for?</summary><div class="faq-body"><p>Keep the lockout; it is the only control nobody can bypass. The $19 buys the hour before you would reach for it: a declaration you confirm while calm, a panel that is red the moment a trade closes against your next-trade rule, a flatten about two seconds after a fill against that rule, a deep link that writes Topstep's own lockout before tilt does its work, a partner who sees the breach, and a breach history that makes next week's declaration honest.</p></div></details>
+            <details><summary>The flatten happens after the fill. So what does it change?</summary><div class="faq-body"><p>The fill stands; the position does not. About two seconds after a fill that breaks a declared rule, a reduce-only close lands, the breach is logged and your partner is told. The flattened fill paid commission and counts in Topstep's statistics. What is before the click is the declaration and the red panel.</p></div></details>
+            <details><summary>It runs on my machine. Can't I just close it?</summary><div class="faq-body"><p>Yes. Closing the agent, revoking the key, or opening TopstepX on another device stops the Referee holding your rules. We record that as a bypass, the panel shows Off, and your partner is told. Bypass rate is a pilot metric; if it is common, the Referee becomes the declaration and the partner at a lower price, and we will say so.</p></div></details>
+            <details><summary>What if the flattened trade would have won?</summary><div class="faq-body"><p>It gets flattened anyway. On the sample's record, the re-entry <span data-sample="trade.2026-03-11.ORBX.11:29.gapMin" data-format="int">6</span> minutes after a losing exit on Wed Mar 11 closed green. The rule was the trader's; the Referee never predicts a trade. Your record shows what the pattern does on average, and one trade does not change that. The panel shows which rule you were inside, and the rule is yours to change tomorrow, while calm.</p></div></details>
+            <details><summary>Is this advice? Is the Referee telling me what to trade?</summary><div class="faq-body"><p>No. It holds the sentence you wrote and the number you put in it. It never chooses a trade, a level or a size, and the analyzer never tells you to take or avoid a trade; it shows your record and lets you write the rule. It is an educational tool, not investment advice. Past results do not predict future results.</p></div></details>
+            <details><summary>Is it proven?</summary><div class="faq-body"><p>No. The Referee is designed to reduce daily-loss breaches and resets. The Topstep pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet, and we will publish the number either way. The reason we think the minutes after a loss matter is other people's work, cited above with its caveats: Coval and Shumway's study of one exchange's professional traders, OneFunded's own figure for its own failed evaluations, and hoc-trade's own dataset. None of that is evidence the Referee works. The pilot is.</p></div></details>
+            <details><summary>What exactly can a rule say?</summary><div class="faq-body"><p>Five kinds: max trades a day (written into TopstepX's own daily limit), a stop attached within 15 seconds and never widened, your declared size, a cooldown after N losses, and no entry within N minutes of a losing exit. Your words, your numbers. Other patterns the analyzer finds, like your shorts or your 2 pm entries, are shown but are not rules the Referee holds.</p></div></details>
+            <details><summary>What does "pre-trade" mean here?</summary><div class="faq-body"><p>The declaration before the session and the next-trade state computed the moment the previous trade closes. The flatten is after the fill.</p></div></details>
+            <details><summary>Can it flatten the wrong trade?</summary><div class="faq-body"><p>It can, which is why the first week is a dry run, there is a visible kill switch, any wrong flatten pauses the Referee on that account and credits the commission, and the gate for the pilot is under one wrong flatten per hundred trader-weeks. Reduce-only orders are to be confirmed with Topstep.</p></div></details>
+            <details><summary>What does the pilot measure, and what if it fails?</summary><div class="faq-body"><p>Breaches per trader-week, dry-run weeks against enforced weeks for the same traders, counting everyone who started; also overrides, bypasses, wrong flattens, declaration-before-fill and undeclared trades. If breaches do not fall, the flatten ends and the product becomes the declaration plus the partner, or the analyzer stays free and nothing is sold. Either way this page says so.</p></div></details>
+            <details><summary>What happens when my Combine ends, or when I go Live Funded?</summary><div class="faq-body"><p>Cancel in one click; your rulebook, breach history and partner stay for the next Combine. Topstep excludes Live Funded accounts from the API, so Live Funded traders move to declare-and-reconcile plus the partner, nudge-only, with TopstepX's own risk settings as the control.</p></div></details>
+            <details><summary>I'm not on Topstep. What do I get?</summary><div class="faq-body"><p>Declare-and-reconcile: a hotkey declaration, a one-tap "stopped out", overnight reconciliation from your broker export, undeclared trades logged as undeclared. It nudges and it keeps your score; it cannot flatten. Tradovate's API excludes evaluation accounts and Apex prohibits automation, so that is the honest floor for them.</p></div></details>
+            <details><summary>What do you hold on your server?</summary><div class="faq-body"><p>From the analyzer, nothing: it runs in your browser. From the Referee: your rulebook, breach log and partner pushes, encrypted, behind two-factor sign-in, exportable and deletable on request, with breach notification. Never your API key, which stays in your operating system's keychain, and never your order stream.</p></div></details>
+            <details><summary>I'm in the EU or the UK.</summary><div class="faq-body"><p>At launch the flatten is geofenced to US accounts. EU users get declare-and-reconcile and partner pushes, which decide nothing automatically. No cohort comparisons outside the US.</p></div></details>
+            <details><summary>Why does one draft rule have a number and the others don't?</summary><div class="faq-body"><p>A draft cites a statistic only when the group is solid (15 trades or more) and its 95% interval excludes your average. On the sample, the 3rd-trade rule qualifies (<span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span> trades, interval <span data-sample="ci.tradeOfDay.3rd.lo" data-format="pct">−1.53%</span> to <span data-sample="ci.tradeOfDay.3rd.hi" data-format="pct">−0.10%</span> against an average of <span data-sample="summary.avgReturn" data-format="pct">+0.33%</span>); the 10-minute rule does not (<span data-sample="group.afterPrev.< 10 min after a loss.n" data-format="int">13</span> trades, an early signal), so it is your rule with no number; the stop rule never can, because a fills export cannot show whether a stop was attached. Rules without numbers bind from trade one.</p></div></details>
+            <details><summary>Is the sample real?</summary><div class="faq-body"><p>No. The sample is a fictional share trader generated by a script in the repository (scripts/make-sample.py) with planted patterns. The Referee runs on TopstepX futures; the Apr 9 scenario applies the Referee's rules to the sample's record to show the mechanics, and says so where it appears. Every number from the sample is computed from that file by the engine, live, in this tab.</p></div></details>
+            <details><summary>Do you see my trades?</summary><div class="faq-body"><p>No. The file is read in your browser's memory and never sent anywhere. Open the Network tab in your browser's developer tools, drop a file, and watch nothing go out. The only things this site ever sends are your email address, your platform and whether you have a partner in mind, if you join the waitlist.</p></div></details>
+            <details><summary>Is the analyzer really free?</summary><div class="faq-body"><p>Yes. It runs on your computer, so it costs nothing to run and stays free, with rule drafting, one manual rule, a private rules-kept score and the Record Card. The Referee is $19 a month or $169 a year, and is not for sale until the pilot has run.</p></div></details>
+            <details><summary>Can I check the math?</summary><div class="faq-body"><p>Yes. The engine lives in src/core with tests in test/, and the command-line tool prints the same report and the same three drafts: <code>npm run report -- --tz America/New_York your-trades.csv</code>.</p></div></details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final" id="final" aria-label="Analyze your trades">
+        <div class="wrap">
+          <h2 class="display-2" data-split="lines">Your record is ready when you are.</h2>
+          <div class="cta-row" data-reveal>
+            <button type="button" class="btn btn-primary" data-action="pick" data-magnetic>Analyze my trades</button>
+            <button type="button" class="btn btn-secondary" data-action="demo">Run the sample report</button>
+          </div>
+          <p class="small muted" data-reveal>Free. In your browser. Nothing uploaded.</p>
+        </div>
       </section>
     </main>
 
-    <footer>
-      <p>Educational tool, not investment advice. Past results don't predict future results.</p>
+    <footer class="footer">
+      <div class="wrap">
+        <div class="footer-cols">
+          <div>
+            <p class="brand"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="currentColor"/></svg>MyTradePilot</p>
+            <p>You write the rule while calm. The Referee holds it when you are not.</p>
+            <p>Educational tool, not investment advice. The Referee holds rules you wrote; it does not choose trades, levels or sizes. Past results don't predict future results.</p>
+            <p>Sample data is fictional. The Apr 9 scenario applies the Referee's rules to the sample's record; names and times in the partner and day-card mocks are illustrative.</p>
+            <p>The Referee is a pilot. Nothing about its effect is proven yet.</p>
+            <p><a href="#legal" data-scroll-to>Hypothetical-results statement</a></p>
+            <p class="mono-line">BUILT IN THE OPEN · STATIC SITE · NO TRACKING SCRIPTS</p>
+          </div>
+          <nav aria-label="Footer"><a href="#story" data-scroll-to>How it works</a><a href="#rulebook" data-scroll-to>Rulebook</a><a href="#pricing" data-scroll-to>Pricing</a><a href="#limits" data-scroll-to>Limits</a><a href="#method" data-scroll-to>Methodology</a><a href="#signup" data-scroll-to>Waitlist</a><a href="#faq" data-scroll-to>FAQ</a><a href="https://github.com/CezarAster/mytradepilot" rel="noopener">Engine and tests on GitHub</a><button type="button" id="motion-toggle" aria-pressed="true">Motion: on</button><span>© 2026 MyTradePilot</span></nav>
+        </div>
+        <div class="legal" id="legal">
+          <div class="cftc-441"><span class="cftc-label">Hypothetical-results statement</span><p class="cftc-text">HYPOTHETICAL PERFORMANCE RESULTS HAVE MANY INHERENT LIMITATIONS, SOME OF WHICH ARE DESCRIBED BELOW. NO REPRESENTATION IS BEING MADE THAT ANY ACCOUNT WILL OR IS LIKELY TO ACHIEVE PROFITS OR LOSSES SIMILAR TO THOSE SHOWN. IN FACT, THERE ARE FREQUENTLY SHARP DIFFERENCES BETWEEN HYPOTHETICAL PERFORMANCE RESULTS AND THE ACTUAL RESULTS SUBSEQUENTLY ACHIEVED BY ANY PARTICULAR TRADING PROGRAM. ONE OF THE LIMITATIONS OF HYPOTHETICAL PERFORMANCE RESULTS IS THAT THEY ARE GENERALLY PREPARED WITH THE BENEFIT OF HINDSIGHT. IN ADDITION, HYPOTHETICAL TRADING DOES NOT INVOLVE FINANCIAL RISK, AND NO HYPOTHETICAL TRADING RECORD CAN COMPLETELY ACCOUNT FOR THE IMPACT OF FINANCIAL RISK IN ACTUAL TRADING. FOR EXAMPLE, THE ABILITY TO WITHSTAND LOSSES OR TO ADHERE TO A PARTICULAR TRADING PROGRAM IN SPITE OF TRADING LOSSES ARE MATERIAL POINTS WHICH CAN ALSO ADVERSELY AFFECT ACTUAL TRADING RESULTS. THERE ARE NUMEROUS OTHER FACTORS RELATED TO THE MARKETS IN GENERAL OR TO THE IMPLEMENTATION OF ANY SPECIFIC TRADING PROGRAM WHICH CANNOT BE FULLY ACCOUNTED FOR IN THE PREPARATION OF HYPOTHETICAL PERFORMANCE RESULTS AND ALL OF WHICH CAN ADVERSELY AFFECT ACTUAL TRADING RESULTS.</p></div>
+          <p class="legal-line">Shown in full under every what-if figure on this page and in your report. The text is the statement prescribed by NFA Compliance Rule 2-29(c), which satisfies CFTC Rule 4.41(b).</p>
+        </div>
+      </div>
     </footer>
+
+    <div id="dock" class="dock" role="region" aria-label="Quick actions" data-visible="false">
+      <div class="dock-desktop">
+        <button type="button" class="btn btn-primary" data-action="pick">Drop your CSV</button>
+        <button type="button" class="btn btn-secondary" data-action="demo">Run the sample</button>
+      </div>
+      <div class="dock-phone">
+        <button type="button" class="btn btn-primary" data-action="demo">Run the sample report</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/web/main.ts"></script>
+    <script type="module" src="/src/web/site/index.ts"></script>
   </body>
 </html>

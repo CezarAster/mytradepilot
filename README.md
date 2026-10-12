@@ -4,6 +4,11 @@ Two things in one repo:
 
 1. **Free trade analyzer** (the public page): drop in a trade export and see where you make money, where you give it back, and what your stop is doing. Runs entirely in the browser; trades are never uploaded.
 2. **The Referee** (the local app): connects to your Alpaca account, watches every fill in real time, and enforces the rules you wrote while you were calm. Trade 4 when your rule says 3, a re-entry two minutes after a loss, a position with no stop after 60 seconds: the Referee closes it, tells you, and tells your accountability partner. Before you click, it shows what your own record says about the trade you are about to take.
+You write the rule while calm. The Referee holds it when you are not.
+
+Two parts. The **free analyzer** reads a TradingView or broker export in the browser, uploads nothing, and shows the trader's record: where they make money, where they give it back, the stop check, and three draft rules written from that record. The **Referee** is the paid part, in pilot with Topstep Combine traders from late December 2026: the rules the trader declares before a session are held on TopstepX through the ProjectX API; a fill against a declared rule is flattened about two seconds after it lands, the breach is logged, and a read-only partner is told. The flatten is after the fill. Nothing about the Referee's effect is proven yet; the pilot measures breaches per trader-week.
+
+The site is `index.html` on the Equity River v2 visual system; its copy follows `docs/website-content-spec-referee.md`, and `docs/strategy-2026-10-10-referee.md` section 8 is law for every sentence on it.
 
 The strategy behind the product, with sources, is in [docs/strategy.md](docs/strategy.md). How it is built is in [docs/architecture.md](docs/architecture.md).
 
@@ -21,15 +26,32 @@ cd mytradepilot
 npm install
 npm run build:app      # builds the Referee's browser UI once
 npm start              # starts the Referee on http://127.0.0.1:4242
+npm run dev        # web page at http://localhost:5173
+npm test           # engine tests, the site drift test, the phrasing and statement tests
+npm run typecheck
+npm run report -- --tz America/Los_Angeles path/to/trades.csv   # same report and the same three drafts in the terminal
+npm run build      # static site in dist/, deployable anywhere (GitHub Pages, Netlify, Vercel, Cloudflare Pages)
 ```
 
 Open http://127.0.0.1:4242, go to **Settings**, paste your paper key id and secret, choose **Paper**, press **Test connection**, then **Save**. The Referee backfills every fill on the account, rebuilds your trades, and starts listening.
 
 Prefer environment variables? Set `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` (Alpaca's own names) before `npm start`; `ALPACA_MODE=live` switches to the live account.
+- `src/core/parsers/` turns CSV files into trades: the TradingView trade list (Bar Replay / Strategy Tester) and a generic broker fill list (matched into round trips FIFO). `parsers/index.ts` combines files, drops duplicates from overlapping exports, and merges partial fills.
+- `src/core/analyze.ts` tags each trade (New York entry time, trade number of the day, what came before, hold time) and finds edges, leaks and weak spots. Small groups are shrunk toward the overall average so 3 lucky trades aren't called an edge.
+- `src/core/stats.ts` is the 95% interval; `src/core/drafts.ts` writes the three draft rules. A draft cites a statistic only when its group is solid (15 trades or more) and the interval excludes the trader's average; otherwise it is the trader's rule with no number.
+- `src/web/legal.ts` holds the hypothetical-results statement (NFA Compliance Rule 2-29(c), satisfying CFTC Rule 4.41(b)); it is rendered in full under every what-if figure in the report and in the page's `#legal` block.
+- `src/web/main.ts` and `src/web/report.ts` are the analyzer and the report; `src/web/site/` is the marketing page (river, story, declaration card, counters, labs, band); `src/web/style.css` and `src/web/site.css` are the stylesheets.
+- A fills export may carry optional `Worst %` / `Best %` columns on the closing fill (TradingView's `Adverse excursion %` is read automatically); they turn on the stop check.
+- `public/sample-trades.csv` holds a fictional share trader's fills for the "Run the sample report" button and every sample number on the page (`python scripts/make-sample.py` regenerates it). Every sample figure on the page is bound with `data-sample` and drift-tested against the engine.
+
+## The copy
+
+The page uses the strategy's phrasing ("your rule says", "your record shows"), never compares the visitor with other traders, never claims a saving, and never prints a stop level or a size; the phrases it must never use are listed in `test/fixtures/forbidden-phrases.txt`. Third-party findings appear only in `#why` and FAQ 6, with their source and caveat. Invented numbers (the declaration card, the held panel, the partner pushes, the day card, the Record Card tile) are labelled "illustrative" in the same component. A test greps the page, the stylesheets and the rendered sample report for the forbidden phrases.
 
 ## The first week: dry run
 
 Enforcement starts in **dry run**. Every breach is logged, shown in the UI and notified, but nothing is sent to the broker. Trade a week like that, read the breaches, and adjust the rules. When the rules match what you actually mean, open **Today** and switch dry run off. The red **KILL SWITCH** turns enforcement off at once, at any time.
+The band and the mini form post to the provider set in `src/web/signup.ts` (Buttondown). Only the email address, the platform tag and the partner-in-mind tag are sent; trades and rules never leave the tab. The partner invite is copied or mailed by the trader; the site never collects anyone else's address.
 
 ## Rules
 

@@ -30,22 +30,6 @@ jobs:
       - run: npm run build
       - run: npm run build:app
 
-      # Preview of the Referee site from its branch, served next to the current page at /referee/.
-      # Re-run this workflow (Actions -> Test and deploy -> Run workflow) to pick up new commits on the branch.
-      - uses: actions/checkout@v5
-        with:
-          ref: claude/trading-app-website-examples-1sfic8
-          path: referee
-      - run: npm ci
-        working-directory: referee
-      - run: npm test
-        working-directory: referee
-      - run: npm run typecheck
-        working-directory: referee
-      - run: npm run build
-        working-directory: referee
-      - run: mkdir -p dist/referee && cp -r referee/dist/. dist/referee/
-
       - uses: actions/upload-pages-artifact@v4
         if: github.ref == 'refs/heads/main'
         with:

@@ -6,7 +6,7 @@ Written 2026-10-12 at the end of the first build session. Start a new Claude Cod
 
 MyTradePilot has two products in one repo.
 
-- **The free trade analyzer**, the public page: drop in a CSV and see where you make money and where you give it back. It runs in the browser and deploys to GitHub Pages from `main`: https://cezaraster.github.io/mytradepilot/
+- **The website**, the public page at https://cezaraster.github.io/mytradepilot/ (GitHub Pages, deployed from `main`): the Referee website with the free trade analyzer built in. Drop in a CSV and see where you make money, where you give it back, and three draft rules. It came from the branch `claude/trading-app-website-examples-1sfic8` and is now merged into `main`. Its copy follows `docs/website-content-spec-referee.md`. A test greps the page for the phrases in `test/fixtures/forbidden-phrases.txt`.
 - **The Referee**, a local app: it connects to an Alpaca account, watches every fill, and enforces the trader's own rules. Examples are max trades a day, no re-entry after a loss, a cooldown after losses, a stop within 60 seconds of entry, a size cap and a daily loss limit. When a fill breaks a rule it closes the position, notifies, and can ping an accountability partner. Before the next trade it shows what the trader's own record says about trades like it.
 
 Background reading in this repo:
@@ -26,7 +26,7 @@ There is also a social media content brief as a Claude doc. It is private, so as
 | Enforcement | On, in **dry run** by default: breaches are logged and shown as "would have closed". Live enforcement is a switch on the Today page. A kill switch turns it off. |
 | AI | Through the MCP server in `src/mcp/main.ts`, so Claude Desktop or Claude Code reads the Referee on the trader's own Claude subscription. There is no Anthropic API key and no in-app LLM. |
 | Wording | "Your rule says" and "your record shows". Never "signals", "AI coach", "verdict", or suggested stops or sizes for an instrument. No profit claims anywhere. |
-| Launch | Late December 2026 (stated on the site's waitlist copy). |
+| Launch | Late December 2026, stated on the website (it said April 2027 before). |
 | Price | Not decided. The strategy suggested $19 a month or $169 a year for the Referee, with the analyzer free. |
 
 ## Run it on your PC
@@ -81,6 +81,10 @@ Ordered by risk. Paper trading in dry run is safe with these open.
 | 9 | A SQLite or config write failure aborts the flatten and disables the kill switch | `src/server/referee.ts` `onBreach`, `kill`, `setEnforcement` | Wrap persistence in try/catch and flatten first. Update in-memory enforcement before the file write. |
 | 10 | Switching paper to live during a reconcile can write paper fills into the live database | `src/server/referee.ts` `doReconcile`, `updateSettings` | Capture the store and engine at the start of `doReconcile` and bail out if they changed. Re-run a coalesced reconcile instead of dropping it. |
 | 11 | Retries do not honour Retry-After on HTTP 429 | `src/alpaca/client.ts` `request` | Honour Retry-After, and give the flatten path its own bounded retry. |
+
+## One thing to reconcile
+
+The website describes the Referee as a Topstep Combine pilot that holds rules on TopstepX through the ProjectX API, priced at $19 a month. The app built in this repo connects to **Alpaca for US stocks**, not Topstep. Dad chose to change only the dates on the site for now. Decide which way it goes, then align the other: either rewrite the site copy (and `docs/website-content-spec-referee.md`) for Alpaca, or add a ProjectX/TopstepX connection to the app.
 
 ## Next steps, in order
 

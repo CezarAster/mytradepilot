@@ -1,6 +1,6 @@
 // Record: the edge/leak report over every closed trade the service knows, plus CSV import.
 import type { ImportResponse } from '../../src/server/api.ts';
-import { renderReport } from '../../src/web/report.ts';
+import { renderReport } from '../report.ts';
 import { api } from '../api.ts';
 import { TIME_ZONES } from '../format.ts';
 import { errorText, esc, field, refreshState, reportError, store, toast, type View } from '../main.ts';
