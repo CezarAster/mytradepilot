@@ -294,7 +294,8 @@ export class LiveEngine {
 
     const r = this.rules;
     const t = fill.time;
-    if (this.lock && t < this.lock.until && t >= (this.lock.since ?? -Infinity)) {
+    // After the lock started, not at it: the fill whose breach created the lock was not entered while locked.
+    if (this.lock && t < this.lock.until && t > (this.lock.since ?? -Infinity)) {
       this.breach(events, t, 'locked', fill.symbol, p.tradeKey, `You are locked out until ${fmtTime(this.lock.until)} ET (${this.lock.reason}). You entered ${fill.symbol} at ${fmtTime(t)}.`, 'flatten');
     }
     if (r.maxTradesPerDay.enabled && number > r.maxTradesPerDay.count) {
@@ -460,15 +461,18 @@ export class LiveEngine {
     }
   }
 
-  /** Time passing: stop deadlines, lock expiry, day rollover. Call every few seconds. */
-  tick(now: number): EngineEvent[] {
+  /**
+   * Time passing: stop deadlines, lock expiry, day rollover. Call every few seconds. `holdStops`: symbols whose
+   * stop could not be confirmed with the broker this time (a failed or rate-limited request); their deadline waits.
+   */
+  tick(now: number, holdStops: ReadonlySet<string> = new Set()): EngineEvent[] {
     const events: EngineEvent[] = [];
     this.lastSeen = Math.max(this.lastSeen, now);
     events.push(...this.rollDay(now));
     if (this.lock && this.lock.until <= now) this.lock = null;
     const r = this.rules.stopRequired;
     for (const p of this.positions.values()) {
-      if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop && !p.refereeClosed) {
+      if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop && !p.refereeClosed && !holdStops.has(p.symbol)) {
         p.stopDeadline = null;
         this.breach(events, now, 'stopRequired', p.symbol, p.tradeKey, `Your rule: a stop order within ${r.withinSeconds} s of entry. ${p.symbol} has been open ${Math.round((now - p.entryTime) / 1000)} s with no stop.`, r.action);
       }
@@ -481,12 +485,14 @@ export class LiveEngine {
    * Bring back what a replay of fills cannot rebuild: the lock, today's breach count (time-based breaches
    * such as a missing stop are not re-derived) and whether the daily loss limit already fired.
    */
-  restore(state: { date: string; lock: { until: number; reason: string } | null; breaches: number; dailyLossBreached: boolean }, now: number, newBreaches = 0): void {
+  restore(state: { date: string; lock: { until: number; reason: string; since?: number } | null; breaches: number; dailyLossBreached: boolean }, now: number, newBreaches = 0): void {
     this.rollDay(now);
     if (state.date !== this.day.date) return;
-    if (state.lock && state.lock.until > now) this.lock = { ...state.lock };
-    // `newBreaches`: breaches the replay found that were never seen before (backfilled fills), so not in state.breaches.
-    this.day.breaches = Math.max(this.day.breaches, state.breaches + newBreaches);
+    // The saved state saw every breach of the day as it happened. A replay re-derives only the fill-based ones, and
+    // judges old fills by today's rules, so it can both miss breaches and invent them: the saved state wins.
+    // `newBreaches` are the ones a replay found because of fills never seen before (backfilled late).
+    this.lock = state.lock && state.lock.until > now ? { ...state.lock } : null;
+    this.day.breaches = state.breaches + newBreaches;
     const cap = this.rules.maxBreachesPerDay;
     if (newBreaches > 0 && cap.enabled && this.day.breaches >= cap.count && !this.lock) {
       this.lock = { until: endOfMarketDay(now), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})`, since: now };

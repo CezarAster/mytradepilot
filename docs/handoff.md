@@ -100,6 +100,23 @@ A second review ran five reviewers, each paired with a skeptic who tried to refu
 - **Rate limits.** A wait of 0 or a malformed header falls back to normal backoff. While Alpaca is rate-limiting us, the position and sync polling waits instead of asking every tick. The fake Alpaca can now answer the way Alpaca documents it (`X-RateLimit-Reset`).
 - **Tests** poll for outcomes instead of sleeping a fixed time; `test/referee.test.ts` got the same treatment. 12 copies in parallel on a loaded 4-core machine all pass.
 
+### The second review
+
+A second review of those fixes (three reviewers, three skeptics) found 14 more problems in them, and 13 are fixed, each with a test that fails on the code before (`test/referee-sync.test.ts`, "review 2"; plus `test/alpaca.test.ts`):
+
+- **The out-of-order rebuild** no longer guesses which breaches are new from the stored rows. It replays today twice, with and without the missed fills, and only breaches that differ are new. Imports are seeded at the moment they were made, so a restart after a mid-day import keeps the live trade numbers. The saved day state (merged with what the running engine knew) wins over the replay for the lock and the breach count. The fill that set off a lock is not judged locked on a replay. A rule turned on mid-day is not applied to older trades. Trades after a missed fill get their new numbers.
+- **Failed writes** are queued and made in order once the database works again, and an unsaved day state is saved again, so a lock set while writes were paused survives a restart.
+- **Closes:**
+  - Queued closes are keyed by trade, not symbol, so a stale close never deletes a newer trade's.
+  - The kill switch is read before every send, so a drain or an in-line retry stops at once.
+  - A close the Referee gives up on hands the position back to the stop rule.
+  - The trader's own close keeps its retry when the kill switch is pressed.
+  - A queued close follows its trade when a rebuild changes the trade's key.
+- **Rate limits:** a 429 pauses polling for at most a minute (Alpaca's window), and holds only the stop check it could not confirm; the tick, its other rules and queued closes go on.
+- **Test:** the heartbeat test again proves an answered socket is kept past the idle timeout.
+
+Known, not fixed (low severity): when a missed breach means the day locked earlier than the saved lock says, entries between the true start and the saved start are not judged as locked. Fixing it needs another replay pass with the lock start moved; see the second review's U9.
+
 ## The original review findings (all fixed)
 
 Kept for reference.

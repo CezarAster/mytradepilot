@@ -137,9 +137,9 @@ export class Store {
 
   // ---- imports ----
 
-  addImport(fileName: string, format: string, timeZone: string, trades: Trade[]): { imported: number; duplicates: number } {
+  addImport(fileName: string, format: string, timeZone: string, trades: Trade[], importedAt = Date.now()): { imported: number; duplicates: number } {
     const tx = this.db.transaction(() => {
-      const r = this.db.prepare('INSERT INTO imports (file_name, format, time_zone, imported_at, trades) VALUES (?,?,?,?,?)').run(fileName, format, timeZone, Date.now(), trades.length);
+      const r = this.db.prepare('INSERT INTO imports (file_name, format, time_zone, imported_at, trades) VALUES (?,?,?,?,?)').run(fileName, format, timeZone, importedAt, trades.length);
       const ins = this.db.prepare('INSERT OR IGNORE INTO import_trades (key, import_id, json) VALUES (?,?,?)');
       let imported = 0;
       for (const t of trades) imported += ins.run(t.key, r.lastInsertRowid, serializeTrade(t)).changes;
@@ -150,6 +150,17 @@ export class Store {
 
   importedTrades(): Trade[] {
     return (this.db.prepare('SELECT json FROM import_trades').all() as { json: string }[]).map((r) => deserializeTrade(r.json));
+  }
+
+  /** Imported trades grouped by the import that added them, oldest import first, with when it was made. */
+  importBatches(): { importedAt: number; trades: Trade[] }[] {
+    const rows = this.db.prepare('SELECT i.id AS id, i.imported_at AS at, t.json AS json FROM import_trades t JOIN imports i ON i.id = t.import_id ORDER BY i.imported_at, i.id').all() as { id: number; at: number; json: string }[];
+    const out: { id: number; importedAt: number; trades: Trade[] }[] = [];
+    for (const r of rows) {
+      if (out.at(-1)?.id !== r.id) out.push({ id: r.id, importedAt: r.at, trades: [] });
+      out.at(-1)!.trades.push(deserializeTrade(r.json));
+    }
+    return out.map(({ importedAt, trades }) => ({ importedAt, trades }));
   }
 
   countImports(): number {

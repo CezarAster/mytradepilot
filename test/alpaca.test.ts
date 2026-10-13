@@ -100,7 +100,9 @@ test('fix 6: the stream heartbeats while live, and reconnects when the socket go
   stream.start();
   await waitFor('live', () => stream.getStatus() === 'live');
   const first = FakeSocket.all[0];
-  await waitFor('heartbeats', () => first.sent.filter((m) => m.action === 'listen').length >= 4);
+  // Well past the idle timeout with answers flowing: an answered heartbeat must keep the socket alive.
+  const liveAt = Date.now();
+  await waitFor('two idle timeouts of heartbeats', () => Date.now() - liveAt >= 1300 && first.sent.filter((m) => m.action === 'listen').length >= 10);
   assert.equal(lives, 1, 'a heartbeat answer is not a reconnect');
   assert.equal(FakeSocket.all.length, 1, 'an answering socket is kept');
 

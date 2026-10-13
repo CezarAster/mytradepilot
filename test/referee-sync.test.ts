@@ -39,7 +39,7 @@ function reset(at: string): string {
 
 const NO_STOP_RULE: Partial<RuleSet> = { stopRequired: { enabled: false, withinSeconds: 60, action: 'flatten' } };
 
-async function makeReferee(home: string, opts: { dryRun?: boolean; rules?: Partial<RuleSet>; sleeps?: number[] } = {}) {
+async function makeReferee(home: string, opts: { dryRun?: boolean; rules?: Partial<RuleSet>; sleeps?: number[]; onSleep?: () => unknown } = {}) {
   const config = new ConfigStore(home);
   config.update({
     alpaca: CREDS,
@@ -56,9 +56,9 @@ async function makeReferee(home: string, opts: { dryRun?: boolean; rules?: Parti
     clientFactory: (c) => new AlpacaClient(c, { tradingHost: `http://127.0.0.1:${fake.port}`, dataHost: `http://127.0.0.1:${fake.port}`, retries: 0, sleep: () => new Promise((r) => setTimeout(r, 1)) }),
     streamFactory: (_c, handlers) => new FakeStream(handlers) as unknown as TradeStream,
     dbFile: (mode) => join(home, `test-${mode}.sqlite`),
-    sleep: (ms) => {
+    sleep: async (ms) => {
       opts.sleeps?.push(ms);
-      return Promise.resolve();
+      await opts.onSleep?.(); // a test can act, and wait, while the referee waits to retry
     },
   });
   const events: ServerEvent[] = [];
@@ -510,5 +510,267 @@ test('fix 11 (review): while Alpaca rate-limits us, polling waits instead of re-
   clock += 30000;
   await tick(referee);
   assert.equal(polls(), before + 2, 'polling again after the wait');
+  await referee.stop();
+});
+
+// ---------------------------------------------------------------- the second review: rebuilds, closes, failures
+
+/** Make one store method throw once (a file briefly locked by another program), then work again. */
+function failOnce(referee: Referee, method: string): void {
+  const store = (referee as unknown as { store: Record<string, (...a: unknown[]) => unknown> }).store;
+  const real = store[method].bind(store);
+  let failed = false;
+  store[method] = (...a: unknown[]) => {
+    if (failed) return real(...a);
+    failed = true;
+    throw new Error('SQLITE_BUSY: database is locked');
+  };
+}
+
+const roundTrip = (stream: FakeStream, id: string, sym: string, at: number, exit = 21) => {
+  stream.push(fillUpdate(at, `${id}-in`, sym, 'buy', 10, 20));
+  stream.push(fillUpdate(at + 1000, `${id}-out`, sym, 'sell', 10, exit));
+};
+
+test('review 2: a lock set while writes were paused is saved once they work again, and survives a restart', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home, { rules: NO_STOP_RULE }); // daily loss limit $500, locks the day
+  const stream = FakeStream.current!;
+  fake.positions = [position('DLA', 100, 50)];
+  stream.push(fillUpdate(clock, 'dla', 'DLA', 'buy', 100, 50));
+  failOnce(referee, 'upsertOrder'); // writes pause for 10 s
+  stream.push({ event: 'new', timestamp: new Date(clock).toISOString(), order: order(clock, 'dla-tp', 'DLA', 'sell', 'limit', 'new', { limit_price: '60' }) });
+  fake.positions = [position('DLA', 100, 50, 44)]; // -$600
+  clock += 6000;
+  await tick(referee);
+  await waitFor('the lock', () => referee.state().snapshot.lock !== null);
+  clock += 11000;
+  await tick(referee); // writes work again
+  await referee.stop();
+  const { referee: restarted } = await makeReferee(home, { rules: NO_STOP_RULE });
+  assert.ok(restarted.state().snapshot.lock, 'the lock was saved after all');
+  assert.ok(restarted.state().todayBreaches.some((b) => b.rule === 'dailyLossLimit'), 'and the breach row');
+  await restarted.stop();
+});
+
+test('review 2: a breach whose row was never written is not counted twice by a later out-of-order rebuild', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const rules: Partial<RuleSet> = { ...NO_STOP_RULE, maxBreachesPerDay: { enabled: true, count: 2 }, maxPositionDollars: { enabled: true, dollars: 10000, action: 'warn' } };
+  const { referee } = await makeReferee(home, { rules });
+  const store = (referee as unknown as { store: Record<string, (...a: unknown[]) => unknown> }).store;
+  const insertBreach = store.insertBreach.bind(store);
+  store.insertBreach = (b: unknown) => {
+    if ((b as { symbol: string }).symbol === 'BIG') throw new Error('SQLITE_IOERR');
+    return insertBreach(b);
+  };
+  const stream = FakeStream.current!;
+  const t0 = clock;
+  fake.positions = [position('BIG', 300, 50)];
+  stream.push(fillUpdate(t0 + MIN, 'big', 'BIG', 'buy', 300, 50)); // breach 1 of 2, its row never saved
+  await waitFor('the breach', () => referee.state().snapshot.day.breaches === 1);
+  clock = t0 + 2 * MIN;
+  fake.fills.push(activity('sm1', 'SMA', 'buy', 10, 20, t0 + 30000), activity('sm2', 'SMA', 'sell', 10, 21, t0 + 40000)); // missed, before BIG
+  await referee.reconcile('test');
+  assert.equal(referee.state().snapshot.day.breaches, 1, 'still one breach');
+  assert.equal(referee.state().snapshot.lock, null, 'no lock');
+  await referee.stop();
+});
+
+test('review 2: a long Retry-After pauses polling for at most a minute, and only holds the stop check it could not make', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home); // stop required within 60 s, flatten
+  fake.positions = [position('SRA', 10, 20)];
+  FakeStream.current!.push(fillUpdate(clock, 'sra', 'SRA', 'buy', 10, 20));
+  fake.rateLimit = { method: 'GET', path: '/v2/orders', seconds: 300, times: 1 }; // our clock behind Alpaca's
+  clock += 50000;
+  await tick(referee); // the stop check is refused: held
+  clock += 11000;
+  await tick(referee);
+  assert.ok(!referee.state().todayBreaches.some((b) => b.rule === 'stopRequired'), 'held, not breached, while unconfirmed');
+  clock += 50000; // +111 s: past the one-minute cap
+  await tick(referee);
+  await waitFor('the stop breach', () => referee.state().todayBreaches.some((b) => b.rule === 'stopRequired' && b.symbol === 'SRA'));
+  await waitFor('the close', () => fake.calls.includes('DELETE /v2/positions/SRA'));
+  await referee.stop();
+});
+
+test('review 2: a queued close dropped by the kill switch hands the position back to the stop rule', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home); // stop required within 60 s
+  fake.rateLimit = { method: 'DELETE', path: '/v2/positions/KQB', seconds: 90, times: 1 };
+  fake.positions = [position('KQB', 300, 50)];
+  FakeStream.current!.push(fillUpdate(clock, 'kqb', 'KQB', 'buy', 300, 50)); // size breach; the close is refused
+  await waitFor('the queued retry', () => referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 90 s/.test(a.detail)));
+  referee.kill();
+  clock += 5000;
+  await tick(referee); // dropped
+  referee.setEnforcement({ enabled: true, dryRun: false });
+  assert.equal(referee.state().snapshot.positions.find((p) => p.symbol === 'KQB')?.refereeClosed, false, 'no longer marked as being closed');
+  clock += 60000;
+  await tick(referee);
+  await waitFor('the stop breach', () => referee.state().todayBreaches.some((b) => b.rule === 'stopRequired' && b.symbol === 'KQB'));
+  await referee.stop();
+});
+
+test('review 2: the kill switch pressed during a drain stops every close still to come', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  let killOnSleep = false;
+  let referee!: Referee;
+  ({ referee } = await makeReferee(home, { rules: NO_STOP_RULE, onSleep: () => killOnSleep && referee.kill() }));
+  const stream = FakeStream.current!;
+  fake.positions = [position('DKA', 100, 50), position('DKB', 100, 50)];
+  stream.push(fillUpdate(clock, 'dka', 'DKA', 'buy', 100, 50));
+  stream.push(fillUpdate(clock, 'dkb', 'DKB', 'buy', 100, 50));
+  fake.rateLimit = { method: 'DELETE', path: '/v2/positions', seconds: 20, times: 1 };
+  fake.positions = [position('DKA', 100, 50, 47), position('DKB', 100, 50, 47)]; // -$600
+  clock += 6000;
+  await tick(referee);
+  await waitFor('both queued', () => referee.state().recentActions.some((a) => /Retrying DKA, DKB one by one/.test(a.detail)));
+  fake.failClose = 1; // DKA's first close fails, and the trader presses kill while it waits to retry
+  killOnSleep = true;
+  clock += 21000;
+  await tick(referee);
+  await idle();
+  assert.equal(count('DELETE /v2/positions/DKA'), 1, 'only the failed attempt');
+  assert.equal(count('DELETE /v2/positions/DKB'), 0, 'DKB never sent');
+  await referee.stop();
+});
+
+test("review 2: a stale close never deletes a newer trade's queued close in the same symbol", async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  let onSleep: () => unknown = () => undefined;
+  const { referee } = await makeReferee(home, { rules: NO_STOP_RULE, onSleep: () => onSleep() });
+  const stream = FakeStream.current!;
+  fake.positions = [position('RQB', 300, 50)];
+  fake.failClose = 1; // T1's first close fails; while it waits, T1 exits and an oversized T2 opens
+  onSleep = () => {
+    onSleep = () => undefined;
+    fake.rateLimit = { method: 'DELETE', path: '/v2/positions/RQB', seconds: 90, times: 1 }; // T2's close is refused
+    stream.push(fillUpdate(clock + 1000, 'rqb1x', 'RQB', 'sell', 300, 50.5));
+    fake.positions = [position('RQB', 300, 50)];
+    stream.push(fillUpdate(clock + 2000, 'rqb2', 'RQB', 'buy', 300, 50));
+    // T1 wakes only once T2's close has been refused and queued.
+    return waitFor('T2 queued', () => referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 90 s/.test(a.detail)));
+  };
+  stream.push(fillUpdate(clock, 'rqb1', 'RQB', 'buy', 300, 50)); // T1 breaks the size rule
+  await waitFor('T2 queued', () => referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 90 s/.test(a.detail)));
+  await waitFor('T1 gone', () => referee.state().recentActions.some((a) => /that trade closed before the close went out/.test(a.detail)));
+  clock += 91000;
+  await tick(referee);
+  await waitFor('T2 closed', () => !fake.positions.some((p) => p.symbol === 'RQB'));
+  await referee.stop();
+});
+
+test("review 2: a queued close follows its trade when a rebuild changes the trade's key", async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home, { rules: NO_STOP_RULE });
+  const t0 = clock;
+  fake.positions = [position('DLC', 150, 50)];
+  FakeStream.current!.push(fillUpdate(t0, 'dlc2', 'DLC', 'buy', 100, 50)); // the stream missed the first 50 shares
+  fake.rateLimit = { method: 'DELETE', path: '/v2/positions', seconds: 20, times: 1 };
+  fake.positions = [position('DLC', 150, 50, 46)];
+  clock += 6000;
+  await tick(referee); // -$400 open on the 100 shares we know of: under the $500 limit
+  fake.fills.push(activity('dlc1', 'DLC', 'buy', 50, 50, t0 - 60000)); // the missed 50 make it -$600
+  await referee.reconcile('test'); // out of order: rebuilt, the trade now starts at the missed fill
+  clock += 6000;
+  await tick(referee);
+  await waitFor('the refused close-all', () => referee.state().recentActions.some((a) => /Retrying DLC one by one in 20 s/.test(a.detail)));
+  // Another missed fill, earlier still: rebuilt again, and the trade's key changes under the queued close.
+  fake.fills.push(activity('dlc0', 'DLC', 'buy', 1, 50, t0 - 120000));
+  fake.positions = [position('DLC', 151, 50, 46)];
+  await referee.reconcile('test');
+  clock += 21000;
+  await tick(referee);
+  await waitFor('DLC closed', () => fake.calls.includes('DELETE /v2/positions/DLC'));
+  await referee.stop();
+});
+
+test("review 2: the trader's own close-all keeps its retry when the kill switch is pressed", async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home, { rules: NO_STOP_RULE });
+  fake.rateLimit = { method: 'DELETE', path: '/v2/positions/MQA', seconds: 90, times: 1 };
+  fake.positions = [position('MQA', 300, 50)];
+  FakeStream.current!.push(fillUpdate(clock, 'mqa', 'MQA', 'buy', 300, 50)); // size breach; queued
+  await waitFor('the queued retry', () => referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 90 s/.test(a.detail)));
+  fake.failCloseAll = ['MQA'];
+  await referee.manualFlatten(null); // the trader's own close-all, which also fails for MQA
+  fake.failCloseAll = [];
+  referee.kill();
+  clock += 6000;
+  await tick(referee);
+  await waitFor('MQA closed', () => !fake.positions.some((p) => p.symbol === 'MQA'));
+  await referee.stop();
+});
+
+test('review 2: a restart after a mid-day import does not renumber live trades into a lock', async () => {
+  const home = reset('2026-10-14T14:00:00Z'); // Wednesday 10:00 ET
+  const rules: Partial<RuleSet> = { ...NO_STOP_RULE, maxTradesPerDay: { enabled: true, count: 3, action: 'warn' } };
+  const { referee } = await makeReferee(home, { rules });
+  const stream = FakeStream.current!;
+  for (const [i, sym] of ['LVA', 'LVB', 'LVC'].entries()) roundTrip(stream, sym.toLowerCase(), sym, clock + i * 20 * MIN);
+  clock = Date.parse('2026-10-14T16:00:00Z'); // noon: the morning's trades from another broker
+  referee.importCsv({ fileName: 'morning.csv', timeZone: 'America/New_York', text: 'Symbol,Side,Qty,Price,Time\nMA,Buy,1,10,2026-10-14 09:35\nMA,Sell,1,11,2026-10-14 09:40\nMB,Buy,1,10,2026-10-14 09:45\nMB,Sell,1,11,2026-10-14 09:50\nMC,Buy,1,10,2026-10-14 09:55\nMC,Sell,1,11,2026-10-14 09:58\n' });
+  assert.equal(referee.state().snapshot.day.breaches, 0);
+  await referee.stop();
+  const { referee: restarted } = await makeReferee(home, { rules });
+  const st = restarted.state();
+  assert.equal(st.snapshot.day.tradesOpened, 6);
+  assert.equal(st.snapshot.day.breaches, 0, 'no breaches the live day never had');
+  assert.equal(st.snapshot.lock, null);
+  await restarted.stop();
+});
+
+test('review 2: the fill that set off a lock is not judged locked when the day is replayed', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const rules: Partial<RuleSet> = { ...NO_STOP_RULE, maxTradesPerDay: { enabled: true, count: 1, action: 'warn' }, maxBreachesPerDay: { enabled: true, count: 3 } };
+  const { referee } = await makeReferee(home, { rules });
+  const stream = FakeStream.current!;
+  const t0 = clock;
+  roundTrip(stream, 'aa', 'AAA', t0);
+  roundTrip(stream, 'bb', 'BBB', t0 + 2 * MIN); // breach 1
+  roundTrip(stream, 'cc', 'CCC', t0 + 4 * MIN); // breach 2
+  fake.positions = [position('DDD', 10, 20)];
+  stream.push(fillUpdate(t0 + 10 * MIN, 'dd', 'DDD', 'buy', 10, 20)); // breach 3: the lock; DDD stays open
+  await waitFor('the lock', () => referee.state().snapshot.lock !== null);
+  await referee.stop();
+  const { referee: restarted } = await makeReferee(home, { rules });
+  assert.equal(restarted.state().snapshot.day.breaches, 3, 'not 4');
+  clock = t0 + 12 * MIN;
+  fake.fills.push(activity('ee1', 'EEE', 'buy', 10, 20, t0 + MIN), activity('ee2', 'EEE', 'sell', 10, 21, t0 + MIN + 5000)); // missed
+  await restarted.reconcile('test');
+  await idle();
+  assert.ok(!fake.calls.includes('DELETE /v2/positions/DDD'), 'DDD was never entered while locked');
+  await restarted.stop();
+});
+
+test('review 2: a rule turned on mid-day is not applied to older trades when a missed fill forces a rebuild', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home, { rules: { ...NO_STOP_RULE, maxPositionDollars: { enabled: false, dollars: 10000, action: 'flatten' } } });
+  const t0 = clock;
+  fake.positions = [position('AAB', 300, 50)];
+  FakeStream.current!.push(fillUpdate(t0 + MIN, 'aab', 'AAB', 'buy', 300, 50)); // $15,000, no rule against it then
+  referee.setRules({ ...referee.state().rules, maxPositionDollars: { enabled: true, dollars: 10000, action: 'flatten' } });
+  clock = t0 + 5 * MIN;
+  fake.fills.push(activity('bb1', 'BBC', 'buy', 10, 20, t0 + 30000), activity('bb2', 'BBC', 'sell', 10, 21, t0 + 40000)); // missed, unrelated
+  await referee.reconcile('test');
+  await idle();
+  assert.ok(!fake.calls.includes('DELETE /v2/positions/AAB'));
+  assert.ok(!referee.state().todayBreaches.some((b) => b.symbol === 'AAB'));
+  await referee.stop();
+});
+
+test('review 2: after a missed fill is replayed, later trades get their new numbers, earlier ones keep theirs', async () => {
+  const home = reset('2026-10-20T15:00:00Z');
+  const { referee } = await makeReferee(home, { rules: NO_STOP_RULE });
+  const stream = FakeStream.current!;
+  const t0 = clock;
+  roundTrip(stream, 'xn', 'XNA', t0);
+  roundTrip(stream, 'zn', 'ZNA', t0 + 3 * MIN);
+  clock = t0 + 5 * MIN;
+  fake.fills.push(activity('yn1', 'YNA', 'buy', 10, 20, t0 + MIN), activity('yn2', 'YNA', 'sell', 10, 21, t0 + MIN + 5000));
+  await referee.reconcile('test');
+  const numbers = Object.fromEntries(referee.state().todayTrades.map((t) => [t.symbol, t.tradeOfDay]));
+  assert.deepEqual(numbers, { XNA: 1, YNA: 2, ZNA: 3 });
   await referee.stop();
 });
