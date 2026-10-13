@@ -2,3 +2,6 @@ node_modules
 dist/
 dist-app/
 .claude/worktrees/
+# UI smoke test screenshots (scripts/ui-smoke.cjs)
+scripts/shot-*.png
+scripts/scenario-*.png
