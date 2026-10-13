@@ -118,9 +118,22 @@ Kept for reference.
 | 10 | Switching paper to live during a reconcile can write paper fills into the live database | `src/server/referee.ts` `doReconcile`, `updateSettings` | Capture the store and engine at the start of `doReconcile` and bail out if they changed. Re-run a coalesced reconcile instead of dropping it. |
 | 11 | Retries do not honour Retry-After on HTTP 429 | `src/alpaca/client.ts` `request` | Honour Retry-After, and give the flatten path its own bounded retry. |
 
-## One thing to reconcile
+## Site and app: reconciled for Alpaca (2026-10-13)
 
-The website describes the Referee as a Topstep Combine pilot that holds rules on TopstepX through the ProjectX API, priced at $19 a month. The app built in this repo connects to **Alpaca for US stocks**, not Topstep. Dad chose to change only the dates on the site for now. Decide which way it goes, then align the other: either rewrite the site copy (and `docs/website-content-spec-referee.md`) for Alpaca, or add a ProjectX/TopstepX connection to the app.
+The site used to describe the Referee as a Topstep Combine pilot holding rules on TopstepX through the ProjectX API. We chose to align the site with the app, so the copy now says what the app does. `index.html`, `docs/website-content-spec-referee.md`, the README and the draft rules' "Held by" lines are rewritten:
+
+- Alpaca, US stocks, paper accounts first; pilot late December 2026.
+- The app runs on the trader's computer, with no MyTradePilot server.
+- The partner is a Discord or Telegram webhook, not a seat.
+- The daily loss limit is a Referee rule. The Referee's own lock for the rest of the day replaces Topstep's lockout.
+- Max trades is enforced by closing the extra fill, not by a broker-side limit.
+
+Left for a person to decide:
+
+- **Legal.** Section 8 of `docs/strategy-2026-10-10-referee.md` analyses the futures regime (CFTC CTA, Rule 4.14, NFA 2-29). US stocks fall under a different regime. The memo's questions need asking again for equities before anyone pays. The site still shows the hypothetical-results statement under every what-if figure; that was kept on purpose.
+- **Waitlist tags.** The platform select now sends `platform-alpaca`, `platform-ibkr`, `platform-schwab`, `platform-webull`, `platform-tradestation`, `platform-robinhood` and `platform-other`. Check that Buttondown accepts or creates these tags.
+- **Promised but not built.** These are still on the page as part of the paid plan or the analyzer, but neither the app nor the analyzer has them yet: the Record Card, a private rules-kept score, one manual rule kept by hand, and the day card.
+- **Price.** $19 a month or $169 a year stays on the page; it is still undecided.
 
 ## Next steps, in order
 

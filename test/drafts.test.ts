@@ -99,7 +99,7 @@ test('drafts: a losing 2nd trade of the day drafts max 1 with no number under 15
   assert.equal(drafts.length, 3);
   const max = drafts.find((d) => d.kind === 'maxTrades')!;
   assert.equal(max.sentence, 'I stop after 1 trade a day.');
-  assert.ok(/refuses the 2nd\.$/.test(max.heldLine));
+  assert.equal(max.heldLine, 'Held by: red once your 1st trade is in; a 2nd fill is flattened.');
   assert.equal(max.record.cited, false, 'eight trades is an early signal, so no number');
   assert.ok(/early signal/.test(max.recordLine));
   // Every second trade here follows a win, so no re-entry or cooldown draft exists; the stop fills the third slot.

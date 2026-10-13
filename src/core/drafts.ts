@@ -15,7 +15,7 @@ export type RuleParams =
   | { losses: number; minutes: number }
   | { minutes: number };
 
-export type HeldBy = 'TopstepX daily trade limit' | 'live flatten' | 'nudge';
+export type HeldBy = 'live flatten' | 'nudge';
 
 export type DraftRecord =
   | { cited: true; n: number; winRate: number; avgReturn: number; totalPnl: number; ci: [number, number] }
@@ -116,9 +116,9 @@ function maxTradesDraft(max: number, noun: string, g: GroupStats, returns: numbe
     'maxTrades',
     `I stop after ${max} ${plural(max, 'trade')} a day.`,
     { maxTrades: max },
-    'TopstepX daily trade limit',
+    'live flatten',
     noun,
-    `Held by: written into TopstepX's own daily trade limit at declaration. Topstep's platform refuses the ${ordinal(max + 1)}.`,
+    `Held by: red once your ${ordinal(max)} trade is in; a ${ordinal(max + 1)} fill is flattened.`,
     g,
     returns,
     overallAvg,
@@ -161,11 +161,11 @@ function typicalDayDraft(med: number, days: number): Draft {
     kind: 'maxTrades',
     sentence: `I stop after ${max} ${plural(max, 'trade')} a day.`,
     params: { maxTrades: max },
-    heldBy: 'TopstepX daily trade limit',
+    heldBy: 'live flatten',
     record: { cited: false, reason: 'from your typical day, not a statistic' },
     tag: '',
     recordLine: `Your typical day is ${max} ${plural(max, 'trade')}: the median over your ${days} ${plural(days, 'day')}, not a statistic about those trades. This is your rule; set the number you want.`,
-    heldLine: `Held by: written into TopstepX's own daily trade limit at declaration. Topstep's platform refuses the ${ordinal(max + 1)}.`,
+    heldLine: `Held by: red once your ${ordinal(max)} trade is in; a ${ordinal(max + 1)} fill is flattened.`,
   };
 }
 
