@@ -14,7 +14,7 @@ const BASE = (process.env.MYTRADEPILOT_URL ?? 'http://127.0.0.1:4242').replace(/
 async function api<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(BASE + path, { method, headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(BASE + path, { method, headers: method === 'GET' ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch (err) {
     throw new Error(`The referee service is not reachable at ${BASE}. Start it with "npm start" in the MyTradePilot folder. (${(err as Error).message})`);
   }

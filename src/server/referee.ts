@@ -464,10 +464,25 @@ export class Referee {
     try {
       let detail: string;
       if (symbol === null) {
-        for (const p of this.engine.openPositions()) this.engine.markRefereeClosed(p.symbol);
-        await client.closeAllPositions(true);
-        detail = `Closed every position and cancelled open orders (${rule}).`;
-        this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'flatten_all', symbol: null, breachId, detail, ok: true }) });
+        // Mark first so an exit fill that arrives before the response is labelled; unmarked again below on failure.
+        const open = this.engine.openPositions();
+        for (const p of open) this.engine.markRefereeClosed(p.symbol);
+        const results = await client.closeAllPositions(true);
+        const failed = results.filter((r) => !r.ok);
+        for (const f of failed) {
+          this.engine.markRefereeClosed(f.symbol, false);
+          const tk = open.find((p) => p.symbol === f.symbol)?.tradeKey ?? null;
+          if (!this.flattenRetries.has(f.symbol)) this.flattenRetries.set(f.symbol, { symbol: f.symbol, tradeKey: tk, breachId, rule, attempts: 1, nextAt: this.now() + 5000 });
+          const msg = `Close of ${f.symbol} failed during close-all (${f.status}: ${f.message}). Its open orders may already be cancelled, so it may have no stop. Retrying in 5 s.`;
+          this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'error', symbol: f.symbol, breachId, detail: msg, ok: false }) });
+          this.log.error(msg);
+          void this.notifier.send(`Referee: could not close ${f.symbol}`, msg);
+        }
+        const closed = results.filter((r) => r.ok).map((r) => r.symbol);
+        detail = failed.length
+          ? `Closed ${closed.length ? closed.join(', ') : 'nothing'} and cancelled open orders (${rule}); ${failed.map((f) => f.symbol).join(', ')} failed and will be retried.`
+          : `Closed every position and cancelled open orders (${rule}).`;
+        this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'flatten_all', symbol: null, breachId, detail, ok: failed.length === 0 }) });
       } else {
         this.engine.markRefereeClosed(symbol);
         const cancelled = await client.cancelOrdersFor(symbol);

@@ -14,6 +14,8 @@ export class FakeAlpaca {
   failNext: string | null = null;
   /** Fail this many close-position calls with a 500. */
   failClose = 0;
+  /** Symbols whose entry in a close-all answer fails. */
+  failCloseAll: string[] = [];
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -32,8 +34,15 @@ export class FakeAlpaca {
       if (url.pathname === '/v2/clock') return json(200, { timestamp: new Date().toISOString(), is_open: true, next_open: '', next_close: '' });
       if (url.pathname === '/v2/positions' && req.method === 'GET') return json(200, this.positions);
       if (url.pathname === '/v2/positions' && req.method === 'DELETE') {
-        this.positions = [];
-        return json(207, []);
+        // Like Alpaca: 207 Multi-Status, one entry per position, each with its own status.
+        const out = this.positions.map((p) =>
+          this.failCloseAll.includes(p.symbol)
+            ? { symbol: p.symbol, status: 403, body: { code: 40310000, message: 'insufficient qty available for order' } }
+            : { symbol: p.symbol, status: 200, body: { id: 'close-' + p.symbol, symbol: p.symbol, status: 'accepted' } },
+        );
+        this.positions = this.positions.filter((p) => this.failCloseAll.includes(p.symbol));
+        this.openOrders = [];
+        return json(207, out);
       }
       // Like Alpaca: bracket legs nest under their parent with nested=true; a cancel completes asynchronously
       // (listed once as pending_cancel); a close is refused while any order on the symbol holds the shares.

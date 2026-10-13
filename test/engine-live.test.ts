@@ -266,3 +266,50 @@ test('wilson interval and end of market day', () => {
   // Across the spring DST change (2026-03-08).
   assert.equal(endOfMarketDay(at('2026-03-08 10:00')), at('2026-03-09 00:00'));
 });
+
+test('fix: a losing exit moves its loss from open to realized at once, not counted twice until the next marks', () => {
+  const e = new LiveEngine({ rules: rules({ stopRequired: { enabled: false }, dailyLossLimit: { dollars: 300 } }) });
+  e.applyFill(fill('AAA', 'buy', 100, 50, '2026-03-02 09:40'));
+  e.setMarks({ AAA: 48 }, at('2026-03-02 09:45')); // -200 open
+  assert.equal(e.snapshot(at('2026-03-02 09:45')).day.unrealizedPnl, -200);
+  e.applyFill(fill('AAA', 'sell', 100, 48, '2026-03-02 09:46')); // -200 realized, nothing open
+  const d = e.snapshot(at('2026-03-02 09:46')).day;
+  assert.equal(d.realizedPnl, -200);
+  assert.equal(d.unrealizedPnl, 0);
+  assert.deepEqual(breaches(e.tick(at('2026-03-02 09:46'))), [], '-200 is under the $300 limit; double counted it was -400');
+});
+
+test('fix: partial exits book realized P&L as they happen, and the close trues it up to the trade P&L', () => {
+  const e = new LiveEngine({ rules: rules({ stopRequired: { enabled: false }, dailyLossLimit: { dollars: 300 } }) });
+  e.applyFill(fill('AAA', 'buy', 300, 50, '2026-03-02 09:40'));
+  e.applyFill(fill('AAA', 'sell', 200, 49, '2026-03-02 09:45')); // -200 booked, 100 left at 49: -100 open
+  let d = e.snapshot(at('2026-03-02 09:45')).day;
+  assert.equal(d.realizedPnl, -200);
+  assert.equal(d.unrealizedPnl, -100);
+  assert.equal(d.tradesClosed, 0);
+  // A scale-in changes the average entry; the trade's own P&L decides the day's total at close.
+  e.applyFill(fill('AAA', 'buy', 100, 47, '2026-03-02 09:50'));
+  e.applyFill(fill('AAA', 'sell', 200, 48.5, '2026-03-02 09:55'));
+  d = e.snapshot(at('2026-03-02 09:55')).day;
+  const trade = e.closedTrades().at(-1)!;
+  assert.ok(Math.abs(d.realizedPnl - trade.pnl) < 1e-9, `realized ${d.realizedPnl} equals the trade's ${trade.pnl}`);
+  assert.equal(d.unrealizedPnl, 0);
+  assert.equal(d.tradesClosed, 1);
+
+  // The partial alone is enough to trip the limit with the rest open.
+  const e2 = new LiveEngine({ rules: rules({ stopRequired: { enabled: false }, dailyLossLimit: { dollars: 300 } }) });
+  e2.applyFill(fill('BBB', 'buy', 400, 50, '2026-03-02 10:00'));
+  e2.applyFill(fill('BBB', 'sell', 300, 49, '2026-03-02 10:05')); // -300 booked, 100 open at 49: -100
+  assert.deepEqual(breaches(e2.tick(at('2026-03-02 10:05'))), ['dailyLossLimit']);
+});
+
+test('fix: a position the referee is closing gets no second stopRequired breach', () => {
+  const e = new LiveEngine({ rules: rules({ stopRequired: { withinSeconds: 60 } }) });
+  e.applyFill(fill('AAA', 'buy', 10, 50, '2026-03-02 09:40'));
+  e.markRefereeClosed('AAA');
+  assert.deepEqual(e.positionsAwaitingStop(), []);
+  assert.deepEqual(breaches(e.tick(at('2026-03-02 09:42'))), []);
+  e.markRefereeClosed('AAA', false); // the close failed: the rule applies again
+  assert.deepEqual(e.positionsAwaitingStop(), ['AAA']);
+  assert.deepEqual(breaches(e.tick(at('2026-03-02 09:42'))), ['stopRequired']);
+});

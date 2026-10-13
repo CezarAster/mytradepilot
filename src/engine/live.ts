@@ -148,9 +148,10 @@ export class LiveEngine {
     return events;
   }
 
-  private countClosed(t: Trade): void {
+  /** `alreadyBooked` is what partial exits of this trade already added to realized P&L. */
+  private countClosed(t: Trade, alreadyBooked = 0): void {
     this.day.tradesClosed++;
-    this.day.realizedPnl += t.pnl;
+    this.day.realizedPnl += t.pnl - alreadyBooked;
     if (t.pnl > 0) {
       this.day.wins++;
       this.day.consecutiveLosses = 0;
@@ -211,6 +212,11 @@ export class LiveEngine {
       else if (result.kind === 'add') this.onAdd(events, fill, result.position!);
       else if (result.kind === 'reduce') {
         const p = this.positions.get(fill.symbol)!;
+        // Book the partial exit now, so the daily loss limit sees it; trued up to the trade's own P&L at close.
+        const closing = Math.abs(p.qty) - Math.abs(result.position!.qty);
+        const booked = (p.direction === 'long' ? 1 : -1) * (fill.price - p.avgEntry) * closing;
+        p.bookedPnl += booked;
+        this.day.realizedPnl += booked;
         p.qty = result.position!.qty;
         p.avgEntry = result.position!.avgEntry;
         p.mark = fill.price;
@@ -218,6 +224,9 @@ export class LiveEngine {
       } else if (result.kind === 'close') this.onClose(events, fill, result.closed!);
       result = result.flippedInto;
     }
+    // The fill moved P&L from open to realized (or opened new exposure): keep the open side in step, or a losing
+    // exit counts twice against the daily loss limit until the next marks arrive.
+    this.recomputeUnrealized();
     return events;
   }
 
@@ -239,6 +248,7 @@ export class LiveEngine {
       stopDeadline: null,
       mark: fill.price,
       refereeClosed: false,
+      bookedPnl: 0,
     };
     this.positions.set(fill.symbol, p);
     if (decl) {
@@ -312,7 +322,7 @@ export class LiveEngine {
     this.positions.delete(fill.symbol);
     this.history.push(trade);
     this.historyDirty = true;
-    this.countClosed(trade);
+    this.countClosed(trade, p?.bookedPnl ?? 0);
     const r = this.rules;
     if (trade.pnl <= 0) {
       if (r.noReentryAfterLoss.enabled) {
@@ -386,15 +396,19 @@ export class LiveEngine {
   /** Latest prices for open symbols, for unrealized P&L and the daily loss limit. */
   setMarks(marks: Record<string, number>, now: number): EngineEvent[] {
     const events: EngineEvent[] = [];
-    let unrealized = 0;
     for (const p of this.positions.values()) {
       const m = marks[p.symbol];
       if (m !== undefined && Number.isFinite(m)) p.mark = m;
-      if (p.mark !== null) unrealized += (p.mark - p.avgEntry) * p.qty;
     }
-    this.day.unrealizedPnl = unrealized;
+    this.recomputeUnrealized();
     this.checkDailyLoss(events, now);
     return events;
+  }
+
+  private recomputeUnrealized(): void {
+    let unrealized = 0;
+    for (const p of this.positions.values()) if (p.mark !== null) unrealized += (p.mark - p.avgEntry) * p.qty;
+    this.day.unrealizedPnl = unrealized;
   }
 
   private checkDailyLoss(events: EngineEvent[], now: number): void {
@@ -420,7 +434,7 @@ export class LiveEngine {
     if (this.lock && this.lock.until <= now) this.lock = null;
     const r = this.rules.stopRequired;
     for (const p of this.positions.values()) {
-      if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop) {
+      if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop && !p.refereeClosed) {
         p.stopDeadline = null;
         this.breach(events, now, 'stopRequired', p.symbol, p.tradeKey, `Your rule: a stop order within ${r.withinSeconds} s of entry. ${p.symbol} has been open ${Math.round((now - p.entryTime) / 1000)} s with no stop.`, r.action);
       }
@@ -445,14 +459,14 @@ export class LiveEngine {
   }
 
   /** Mark a position as closed by the referee so its exit is labelled, not counted as a stop-out. */
-  markRefereeClosed(symbol: string): void {
+  markRefereeClosed(symbol: string, closed = true): void {
     const p = this.positions.get(symbol);
-    if (p) p.refereeClosed = true;
+    if (p) p.refereeClosed = closed;
   }
 
   /** Who is still open and the next fill would be their stop check: for the server to poll open orders. */
   positionsAwaitingStop(): string[] {
-    return [...this.positions.values()].filter((p) => p.stopDeadline !== null && !p.stop).map((p) => p.symbol);
+    return [...this.positions.values()].filter((p) => p.stopDeadline !== null && !p.stop && !p.refereeClosed).map((p) => p.symbol);
   }
 
   private prevContext(now: number): { label: string; minutesSinceLastLoss: number | null } {

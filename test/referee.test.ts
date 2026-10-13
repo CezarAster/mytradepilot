@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request as httpRequest } from 'node:http';
 import { after, before, test } from 'node:test';
 import { AlpacaClient } from '../src/alpaca/client.ts';
 import type { TradeStream } from '../src/alpaca/stream.ts';
@@ -289,6 +290,70 @@ test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed
   stream.push(fillUpdate('k2', 'KKK', 'buy', 300, 50));
   await settle();
   assert.equal(fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length, before + 1, 'second trade flattened');
+  assert.equal(fake.positions.length, 0);
+  await referee.stop();
+});
+
+/** node:http, because fetch will not let a test set the Host header. */
+function raw(port: number, method: string, path: string, headers: Record<string, string>, body?: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, method, path, headers }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode ?? 0));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+test('fix: the API refuses a foreign Host (DNS rebinding), other localhost ports, and non-JSON writes', async () => {
+  clock = Date.parse('2026-10-19T14:00:00Z');
+  const { referee } = await makeReferee({ dryRun: true });
+  const http = new RefereeHttp(referee, { port: 0, staticDir: null, log: new Logger(null, 'error') });
+  const port = await http.listen();
+  const self = `127.0.0.1:${port}`;
+  assert.equal(await raw(port, 'GET', '/api/state', { host: self }), 200);
+  assert.equal(await raw(port, 'GET', '/api/state', { host: `localhost:${port}` }), 200);
+  assert.equal(await raw(port, 'GET', '/api/state', { host: `rebind.evil.example:${port}` }), 403, 'rebinding page');
+  assert.equal(await raw(port, 'GET', '/api/events', { host: `rebind.evil.example:${port}` }), 403, 'SSE too');
+  assert.equal(await raw(port, 'GET', '/api/state', { host: self, origin: 'http://localhost:8080' }), 403, 'another local app');
+  assert.equal(await raw(port, 'GET', '/api/state', { host: self, origin: `http://${self}` }), 200);
+  assert.equal(await raw(port, 'GET', '/api/state', { host: '127.0.0.1:5174', origin: 'http://127.0.0.1:5174' }), 200, 'the Vite dev UI through its proxy');
+
+  // A cross-site "simple" POST (text/plain, no preflight) must not reach the kill switch.
+  assert.equal(await raw(port, 'POST', '/api/kill', { host: self, 'content-type': 'text/plain' }, '{}'), 415);
+  assert.equal(await raw(port, 'POST', '/api/kill', { host: self }), 415, 'no content type');
+  assert.equal(referee.state().status.enforcement.enabled, true, 'enforcement untouched');
+  assert.equal(await raw(port, 'POST', '/api/kill', { host: self, origin: `http://${self}`, 'content-type': 'application/json' }), 200);
+  assert.equal(referee.state().status.enforcement.enabled, false);
+  await http.close();
+  await referee.stop();
+});
+
+test('fix: close-all reads the 207 multi-status, retries the symbols that failed, and marks only the closed ones', async () => {
+  clock = Date.parse('2026-10-20T14:00:00Z');
+  const { referee } = await makeReferee();
+  const stream = FakeStream.current!;
+  fake.openOrders = [];
+  fake.positions = [position('MMA', 10, 20), position('MMB', 10, 30)];
+  stream.push(fillUpdate('ma', 'MMA', 'buy', 10, 20));
+  stream.push(fillUpdate('mb', 'MMB', 'buy', 10, 30));
+  fake.failCloseAll = ['MMB'];
+  fake.calls = [];
+  const out = await referee.manualFlatten(null);
+  assert.equal(out.ok, false, out.detail);
+  assert.match(out.detail, /MMB failed/);
+  const acts = referee.state().recentActions;
+  assert.ok(acts.some((a) => a.kind === 'error' && a.symbol === 'MMB' && !a.ok), 'an error per failed symbol');
+  assert.ok(acts.some((a) => a.kind === 'flatten_all' && !a.ok));
+  const pos = referee.state().snapshot.positions;
+  assert.equal(pos.find((p) => p.symbol === 'MMA')?.refereeClosed, true);
+  assert.equal(pos.find((p) => p.symbol === 'MMB')?.refereeClosed, false);
+
+  fake.failCloseAll = [];
+  clock += 6000;
+  await tick(referee);
+  assert.ok(fake.calls.includes('DELETE /v2/positions/MMB'), `MMB retried: ${fake.calls.join(', ')}`);
   assert.equal(fake.positions.length, 0);
   await referee.stop();
 });

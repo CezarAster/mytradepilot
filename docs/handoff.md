@@ -64,9 +64,21 @@ On Windows, `npm install` builds `better-sqlite3`. It uses a prebuilt binary for
   - Stale working orders are closed out on reconcile.
   - Replays keep the declared flag.
 
+## Review findings 1 to 5: fixed (2026-10-13)
+
+Each has a test that fails on the old code (`test/engine-live.test.ts` and `test/referee.test.ts`, the ones named "fix: ...").
+
+1. The API checks Host and Origin against `127.0.0.1:<port>`, `localhost:<port>` and the Vite dev port 5174, and refuses non-GET requests without `content-type: application/json` (415). The UI and the MCP server always send it.
+2. Close-all parses Alpaca's 207 answer. A symbol that failed gets an error action, a notification, a queued retry, and its `refereeClosed` mark removed.
+3. Unrealized P&L is recomputed at the end of every fill.
+4. Partial exits book realized P&L as they fill (`OpenPosition.bookedPnl`); the close trues the day up to the trade's own P&L.
+5. A position the Referee is closing is skipped by the stop check and by `positionsAwaitingStop`.
+
+Also fixed: `scripts/ui-smoke.cjs` never imported `chromium`. Run it in a cloud session with `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
+
 ## Open review findings: fix these before live enforcement
 
-Ordered by risk. Paper trading in dry run is safe with these open.
+Ordered by risk. Paper trading in dry run is safe with these open. Findings 1 to 5 are kept in the table for reference.
 
 | # | Problem | Where | Fix |
 | --- | --- | --- | --- |
@@ -88,7 +100,7 @@ The website describes the Referee as a Topstep Combine pilot that holds rules on
 
 ## Next steps, in order
 
-1. Fix findings 1 to 5 and add a test for each. Use the fake Alpaca in `test/helpers/fake-alpaca.ts` and the patterns at the end of `test/referee.test.ts`.
+1. ~~Fix findings 1 to 5 and add a test for each.~~ Done 2026-10-13.
 2. Run a paper session with Dad in dry run. Read the breaches and the log at `~/.mytradepilot/logs/`, and fix what looks wrong.
 3. Check Windows end to end: desktop notifications (a PowerShell toast, untested), the `better-sqlite3` install, and `npm start` from a fresh clone.
 4. Fix findings 6 to 11.
