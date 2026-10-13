@@ -149,8 +149,15 @@ Left for a person to decide:
 
 - **Legal.** Section 8 of `docs/strategy-2026-10-10-referee.md` analyses the futures regime (CFTC CTA, Rule 4.14, NFA 2-29). US stocks fall under a different regime. The memo's questions need asking again for equities before anyone pays. The site still shows the hypothetical-results statement under every what-if figure; that was kept on purpose.
 - **Waitlist tags.** The platform select now sends `platform-alpaca`, `platform-ibkr`, `platform-schwab`, `platform-webull`, `platform-tradestation`, `platform-robinhood` and `platform-other`. Check that Buttondown accepts or creates these tags.
-- **Promised but not built.** These are still on the page as part of the paid plan or the analyzer, but neither the app nor the analyzer has them yet: the Record Card, a private rules-kept score, one manual rule kept by hand, and the day card.
+- **Planned, not built.** The page now marks the Record Card, the private rules-kept score and the day card as planned (the roadmap's "Later" rung). The manual rule is gone from the page.
 - **Price.** $19 a month or $169 a year stays on the page; it is still undecided.
+
+A review of the rewritten copy (three reviewers, each paired with a skeptic) checked every claim against the app's code, the copy rules and the layout. Its 13 confirmed findings are fixed, and `docs/website-content-spec-referee.md` mirrors the page. Four questions came out of it, for a person:
+
+- **One fill, several breaches.** The old copy said "one fill is never two breaches". The engine logs a breach for each rule a fill breaks, and each one counts toward the lock, so one fill can lock the day. The page now says so. If the old convention (one breach per fill, against the later rule) is the product you want, it is a change to `src/engine/live.ts` `onOpen`.
+- **Declared size** is checked only against the opening fill of a trade declared with "I'm taking this". Adds and later partial fills are not checked. The page says "opening fill"; checking `onAdd` too would close the gap.
+- **After a restart**, only fills missed today are enforced. A close that was under way when the app stopped is not retried, and breaches already stored are not enforced again. The page says to check positions after a restart. Re-enforcing today's stored breaches whose trade is still open would remove that caveat.
+- **Alpaca's own behaviour** stated on the page needs checking against Alpaca's current docs: a market close outside regular hours waits for the open, and pattern-day-trader protection can refuse a close on a margin account under $25,000.
 
 ## Next steps, in order
 

@@ -274,20 +274,20 @@
         <div class="wrap">
           <div class="section-head">
             <p class="eyebrow" data-reveal>The rulebook</p>
-            <h2 class="display-2" data-split="lines">Five kinds of rule. All of them <em>yours.</em></h2>
+            <h2 class="display-2" data-split="lines">Your rules, in your words. All of them <em>yours.</em></h2>
             <p class="lede" data-reveal>You write them while calm, in your own words, with your own numbers. The analyzer drafts; you ratify. Before the session you declare the ones that bind today. The Referee's job is to hold them, not to have opinions about your trades.</p>
           </div>
           <div class="rulebook-grid">
             <div class="rulebook-left">
               <div class="rule-list" id="rulebook-list" data-reveal>
-                <div class="rule-type"><span class="kind">Max trades a day</span><p class="sentence">"I stop after 3 trades a day."</p><p class="how">The 4th fill of the day is a breach: flatten, seconds after it lands.</p></div>
+                <div class="rule-type"><span class="kind">Max trades a day</span><p class="sentence">"I stop after 3 trades a day."</p><p class="how">The fill that opens a 4th trade is a breach: flatten, seconds after it lands.</p></div>
                 <div class="rule-type"><span class="kind">Stop attached</span><p class="sentence">"A stop is on within 15 seconds of every fill. I never widen it."</p><p class="how">A fill with no stop at 15 seconds, or a stop moved away from price, is a breach: flatten.</p></div>
-                <div class="rule-type"><span class="kind">Declared size</span><p class="sentence">"200 shares. Not 300."</p><p class="how">A fill above the declared size is a breach: flatten.</p></div>
+                <div class="rule-type"><span class="kind">Declared size</span><p class="sentence">"200 shares. Not 300."</p><p class="how">Say the size when you press "I'm taking this". An opening fill more than your tolerance above it is a breach.</p></div>
                 <div class="rule-type"><span class="kind">Cooldown</span><p class="sentence">"After 2 losses I stop for 20 minutes."</p><p class="how">The next-trade state goes red when the 2nd loss closes; a fill inside the window is a breach: flatten.</p></div>
                 <div class="rule-type"><span class="kind">No re-entry</span><p class="sentence">"I don't enter within 10 minutes of a losing exit."</p><p class="how">Red at the losing exit; a fill inside 10 minutes is a breach: flatten.</p></div>
               </div>
-              <p class="small muted rule-lines" data-reveal>The Referee never sets a level or a size. It holds the number you wrote.<br>Your daily loss limit is one too: realized plus open, it closes everything and locks the rest of the day.</p>
-              <p class="small convention" data-reveal>A fill inside two windows is one breach, logged against the rule that set the later bind; the other window is written on the breach record. One fill is never two breaches.</p>
+              <p class="small muted rule-lines" data-reveal>The Referee never sets a level or a size. It holds the number you wrote.<br>Your daily loss limit is a rule too: realized plus open loss past your number closes everything and, if you choose, locks the rest of the day.</p>
+              <p class="small convention" data-reveal>A fill can break more than one of your rules at once. Each one is logged as its own breach, and each counts toward your breaches-a-day limit.</p>
             </div>
             <div class="rulebook-right">
               <div class="pf-slot" id="decl-slot">
@@ -335,7 +335,7 @@
                 <p class="dc-replay">The replay says nothing about what that day would have made. The pilot measures breaches per trader-week, not P&amp;L.</p>
                 <p class="dc-share">No share button.</p>
               </div>
-              <p class="small muted dc-caption" data-reveal>The spread and the seconds of price are what no export can show. Private by design: the shareable thing is the Record Card, one stat, with the statement baked in.</p>
+              <p class="small muted dc-caption" data-reveal>The spread and the seconds of price are what no export can show. Private by design. The day card and the Record Card are planned, not built yet.</p>
             </div>
           </div>
           <div class="state-chips" data-reveal>
@@ -358,8 +358,8 @@
         <div class="wrap">
           <div class="section-head">
             <p class="eyebrow" data-reveal>What the $19 is for</p>
-            <h2 class="display-2" data-split="lines">Your broker fills any order you send. The Referee holds the ones your <em>rules</em> forbid.</h2>
-            <p class="lede" data-reveal>Alpaca fills what you send; it doesn't know the rules you wrote while calm. The Referee runs on your computer, watches every fill on your Alpaca account, and holds those rules: the trade count, the cooldown, the stop, the size, the daily loss.</p>
+            <h2 class="display-2" data-split="lines">Your broker takes any order your account allows. The Referee holds the <em>rules</em> you wrote.</h2>
+            <p class="lede" data-reveal>Alpaca takes what your account allows; it doesn't know the rules you wrote while calm. The Referee runs on your computer, watches every fill on your Alpaca account, and holds those rules: the trade count, the re-entry window, the cooldown, the stop, the size, the daily loss and the rest.</p>
           </div>
           <div class="bento">
             <article class="tile" data-reveal>
@@ -391,10 +391,10 @@
                 <svg viewBox="0 0 220 100">
                   <text class="t-fill" x="14" y="30">11:15:00 FILL</text><rect class="b-fill" x="100" y="20" width="106" height="12" rx="3"/>
                   <text class="t-flat" x="14" y="58">11:15:02 FLAT</text><rect class="b-flat" x="100" y="48" width="106" height="12" rx="3"/>
-                  <g class="lock"><rect x="100" y="70" width="84" height="20" rx="10"/><text x="142" y="84" text-anchor="middle">→ LOCKED</text></g>
+                  <g class="lock"><rect x="100" y="70" width="84" height="20" rx="10"/><text x="142" y="84" text-anchor="middle">→ LOGGED</text></g>
                 </svg>
               </div>
-              <p class="eyebrow">Flatten</p><h3>Seconds after a fill against your rule.</h3><p>It cancels the symbol's open orders, then closes the position through Alpaca's close-position call, which can only reduce. The fill stays on your record; the breach goes on your breach log. Three breaches in a day lock the rest of it.</p>
+              <p class="eyebrow">Flatten</p><h3>Seconds after a fill against your rule.</h3><p>It cancels the symbol's open orders, then closes the position through Alpaca's close-position call, which can only reduce. The fill stays on your record; the breach goes on your breach log. Reach the breach limit you set for the day, and the rest of it is locked.</p>
             </article>
             <article class="tile" data-reveal data-reveal-delay=".24">
               <div class="loop" data-loop="partner" aria-hidden="true">
@@ -415,7 +415,7 @@
                   <g class="day d5"><rect x="170" y="24" width="34" height="50" rx="4"/><text x="187" y="54" text-anchor="middle">5/5</text></g>
                 </svg>
               </div>
-              <p class="eyebrow">Breach log</p><h3>Next week's declaration, honest.</h3><p>Declared, kept, breached, undeclared: each day scored privately. The history is what makes the next declaration a real one.</p>
+              <p class="eyebrow">Breach log</p><h3>Next week's declaration, honest.</h3><p>Every breach, with the rule, the time and what the Referee did, and every declared and undeclared entry, in the log on your computer. The history is what makes the next declaration a real one.</p>
             </article>
             <article class="tile" data-reveal data-reveal-delay=".4">
               <div class="loop" data-loop="card" aria-hidden="true">
@@ -426,11 +426,11 @@
                   <g class="stmt"><rect x="24" y="58" width="172" height="26" rx="3"/><text x="30" y="69">HYPOTHETICAL-RESULTS STATEMENT</text><text x="30" y="79">full text on the real card</text></g>
                 </svg>
               </div>
-              <p class="eyebrow">Record Card</p><h3>One stat, shareable.</h3><p>A PNG of your rules-kept score with the hypothetical-results statement baked in, in full. Private day cards have no share button.</p>
+              <p class="eyebrow">Record Card</p><h3>One stat, shareable. Planned.</h3><p>A PNG of your rules-kept score with the hypothetical-results statement baked in, in full. Not built yet: it comes after the pilot.</p>
               <p class="small muted tile-caption">Illustrative. The number is invented; the statement is not.</p>
             </article>
           </div>
-          <p class="footnote" data-reveal>It holds your rules. It never places a trade.</p>
+          <p class="footnote" data-reveal>It holds your rules. It never opens a position.</p>
           <p class="section-cta" data-reveal><a class="btn-ghost" href="#limits" data-scroll-to>Read the honest limits ↓</a></p>
         </div>
       </section>
@@ -449,7 +449,7 @@
             <div class="push-mock" data-reveal aria-label="Illustrative partner pushes">
               <p class="mock-head">Illustrative</p>
               <div class="push-card"><p class="app">The Referee · 11:15</p><p>Sam filled 3 minutes after a losing exit. Rule: no entry within 10 minutes. Flattened at 11:15:02. Breach 1 today.</p></div>
-              <div class="push-card off"><p class="app">The Referee · 13:02</p><p>Sam is locked out for the rest of the day: 3 rule breaches today, and the limit is 3. Every new entry will be closed.</p></div>
+              <div class="push-card"><p class="app">The Referee · 13:02</p><p>Sam is locked out for the rest of the day: 3 rule breaches today, and the limit is 3. Every new entry will be closed.</p></div>
             </div>
           </div>
         </div>
@@ -463,16 +463,16 @@
             <p class="lede" data-reveal>Everything here is also in the FAQ. It is here so you do not have to look for it.</p>
           </div>
           <ol class="limits-list" data-reveal>
-            <li><span class="n">01</span><h3>It cannot stop your click.</h3><p>No retail broker lets an outside app veto an order before it is accepted. The Referee answers the fill: seconds after a fill that breaks a declared rule, it cancels the symbol's open orders, closes the position at market, and logs the breach. The flattened fill stays on your record, and a market close in a fast stock can fill worse than you expect. "Pre-trade" means two things only: the declaration before the click, and the next-trade state computed when the previous trade closes.</p></li>
-            <li><span class="n">02</span><h3>It runs on your computer, and you can turn it off.</h3><p>The Referee is an app on your computer, and your Alpaca keys stay there, in a file only your user account can read. It holds your rules only while it runs: closing it, or a laptop going to sleep, stops it, and the kill switch turns enforcement off at once. When it starts again it catches up on the fills it missed, and still closes a trade that broke a rule if that trade is open. If the pilot shows people switch it off when it matters, we will say so, and the product becomes the declaration and the partner at a lower price.</p></li>
+            <li><span class="n">01</span><h3>It cannot stop your click.</h3><p>No retail broker lets an outside app veto an order before it is accepted. The Referee answers the fill: in market hours, seconds after a fill that breaks a declared rule, it cancels the symbol's open orders, closes the position at market, and logs the breach. The flattened fill stays on your record, and a market close in a fast stock can fill worse than you expect. "Pre-trade" means two things only: the declaration before the click, and the next-trade state computed when the previous trade closes.</p></li>
+            <li><span class="n">02</span><h3>It runs on your computer, and you can turn it off.</h3><p>The Referee is an app on your computer, and your Alpaca keys stay there, in a file only your user account can read. It holds your rules only while it runs: closing it, or a laptop going to sleep, stops it, and the kill switch stops it flattening anything, at once. When it starts again it reads the fills it missed today, and still closes a trade that broke a rule if that trade is open. A close that was under way when it stopped is not retried, so check your positions after a restart. If the pilot shows people switch it off when it matters, we will say so, and the product becomes the declaration and the partner at a lower price.</p></li>
             <li><span class="n">03</span><h3>It can only reduce.</h3><p>There is no order ticket. The Referee cancels orders and closes positions through Alpaca's close-position call; it never opens a position or adds to one. It is not a lock nobody can undo: you can always turn it off, which is why your partner sees the breach.</p></li>
             <li><span class="n">04</span><h3>Alpaca only, at launch.</h3><p>The Referee connects to an Alpaca account with your own API keys, paper or live, and holds rules on US stocks and ETFs. Paper comes first. Other brokers come after the pilot, if it works, and only where the broker's API lets an app read your fills and close a position. On any broker, the free analyzer works with your export today.</p></li>
             <li class="hl"><span class="n">05</span><h3>Nothing is proven yet.</h3><p>The Referee is designed to reduce rule breaches, the daily-loss kind above all. The Alpaca pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet. We will publish the number either way.</p></li>
-            <li><span class="n">06</span><h3>Seconds, not milliseconds.</h3><p>Alpaca will not close shares that an open order still holds, so the Referee cancels the symbol's orders first, waits for Alpaca to confirm, then closes. That takes seconds, and longer when Alpaca is slow or rate-limits the account. The pilot publishes the real latency.</p></li>
-            <li><span class="n">07</span><h3>Wrong flattens.</h3><p>Partial fills, scale-ins, bracket legs, flips, missed fills and reconnects are exactly where a flatten can be wrong. So: the Referee starts in dry run and flattens nothing until you switch it on; there is a visible kill switch; every action it takes is in its log; and any wrong flatten in the pilot gets a post-mortem before enforcement goes back on. The gate is under one wrong flatten per hundred trader-weeks.</p></li>
+            <li><span class="n">06</span><h3>Seconds, not milliseconds.</h3><p>Alpaca will not close shares that an open order still holds, so the Referee cancels the symbol's orders first, waits for Alpaca to confirm, then closes. That takes seconds, and longer when Alpaca is slow or rate-limits the account. Outside regular market hours a market close can wait for the open, and on a margin account under $25,000 Alpaca's pattern-day-trader protection can refuse a close: then the Referee retries, and tells you and your partner it could not close. The pilot publishes the real latency.</p></li>
+            <li><span class="n">07</span><h3>Wrong flattens.</h3><p>Partial fills, scale-ins, bracket legs, flips, missed fills and reconnects are exactly where a flatten can be wrong. So: the Referee starts in dry run and flattens nothing until you switch it on; there is a visible kill switch; every action it takes is in its log; and any wrong flatten in the pilot gets a post-mortem before flattening goes back on. The gate is under one wrong flatten per hundred trader-weeks.</p></li>
             <li><span class="n">08</span><h3>Not advice.</h3><p>The Referee never chooses a trade, a level or a size. It holds the sentence you wrote and the number you put in it. The analyzer shows your record; it does not tell you what to do with it.</p></li>
             <li><span class="n">09</span><h3>Outside the United States.</h3><p>At launch, live flattening is for US accounts. Elsewhere the Referee runs in dry run: it declares, logs and posts to your partner, and decides nothing automatically. No cohort comparisons anywhere outside the US.</p></li>
-            <li><span class="n">10</span><h3>Not in year one.</h3><p>No order ticket, no veto, no AI inside the app, no mobile app, no options or crypto rules, no broker but Alpaca, no market replay, and no comparisons of you with other traders, of any kind. If you use Claude, it can read your Referee through MCP on your own Claude subscription; it cannot change a rule or turn enforcement off.</p></li>
+            <li><span class="n">10</span><h3>Not in year one.</h3><p>No order ticket, no veto, no AI inside the app, no mobile app, no options or crypto rules, no broker but Alpaca, no market replay, and no comparisons of you with other traders, of any kind. If you use Claude, it can read your Referee through MCP on your own Claude subscription; it cannot change a rule or switch the Referee off.</p></li>
           </ol>
           <p class="footnote" data-reveal>If the pilot says it doesn't work, this page will say so.</p>
         </div>
@@ -493,9 +493,8 @@
               <ul class="price-list">
                 <li>The analyzer: edges, leaks, stop check, breakdowns</li>
                 <li>Three draft rules from your record</li>
-                <li>One manual rule, kept by hand</li>
-                <li>Your private rules-kept score</li>
-                <li>The Record Card</li>
+                <li>The same report on the command line</li>
+                <li>Nothing uploaded, no account</li>
               </ul>
               <div class="price-cta"><button type="button" class="btn btn-secondary" data-action="pick">Run the free analyzer</button></div>
             </article>
@@ -506,7 +505,7 @@
               <p class="price-chip"><span class="mchip"><i class="dot"></i>Alpaca pilot · late December 2026</span></p>
               <ul class="price-list">
                 <li>Runs on your computer, connected to your Alpaca account</li>
-                <li>Unlimited rules, declaration, next-trade state</li>
+                <li>All eleven rule types with your numbers, declaration, next-trade state</li>
                 <li>Flatten, cooldown, daily loss limit, lock for the rest of the day</li>
                 <li>Breach posts to your partner's Discord or Telegram</li>
                 <li>Your history from any broker's export</li>
@@ -673,11 +672,11 @@
           <div class="timeline" id="timeline">
             <svg class="line" viewBox="0 0 1000 2" preserveAspectRatio="none" aria-hidden="true"><line id="roadmap-line" x1="0" y1="1" x2="1000" y2="1" stroke="#344050" stroke-width="2"/><line id="roadmap-line-fill" x1="0" y1="1" x2="1000" y2="1" stroke="#5B9CFF" stroke-width="2" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>
             <ol class="milestones" id="milestones">
-              <li class="milestone now" data-ms><span class="when">Now</span><h3>Free analyzer and rulebook</h3><p>Drop an export, see your record, draft three rules, keep one by hand, score your own rules-kept days privately.</p></li>
+              <li class="milestone now" data-ms><span class="when">Now</span><h3>Free analyzer and rulebook</h3><p>Drop an export, see your record, and get three draft rules written from it.</p></li>
               <li class="milestone" data-ms><span class="when">To December 2026</span><h3>The Referee, in dry run</h3><p>The app on your computer watches an Alpaca paper account and logs what it would have closed, without closing anything. The legal memo lands before anyone pays.</p></li>
               <li class="milestone" data-ms><span class="when">Late December 2026</span><h3>Alpaca pilot</h3><p>Alpaca traders, paper accounts first, the real price with the 14-day money-back, alternating dry-run and enforced weeks. Measured in breaches per trader-week.</p></li>
-              <li class="milestone" data-ms><span class="when">After paper weeks</span><h3>Live Alpaca accounts</h3><p>Enforcement on live accounts, once paper weeks show the Referee closes the right trades and nothing else.</p></li>
-              <li class="milestone" data-ms><span class="when">Later</span><h3>Other brokers</h3><p>After the pilot, and only where a broker's API lets an app read your fills and close a position.</p></li>
+              <li class="milestone" data-ms><span class="when">After paper weeks</span><h3>Live Alpaca accounts</h3><p>Flattening on live accounts, once paper weeks show the Referee closes the right trades and nothing else.</p></li>
+              <li class="milestone" data-ms><span class="when">Later</span><h3>Other brokers, and your score</h3><p>After the pilot: other brokers, only where a broker's API lets an app read your fills and close a position; and a private rules-kept score with a shareable Record Card.</p></li>
             </ol>
           </div>
           <div class="roadmap-foot">
@@ -740,9 +739,9 @@
             <h2 class="display-2" data-split="lines">Questions, answered straight.</h2>
           </div>
           <div class="faq-list" data-reveal>
-            <details><summary>What is the $19 for?</summary><div class="faq-body"><p>Your broker fills any order you send; it doesn't know your rules. The $19 buys the hour after a loss, held by something other than willpower: a declaration you confirm while calm, a panel that is red the moment a trade closes against your next-trade rule, a close seconds after a fill against that rule, a lock for the rest of the day when you reach your limit, a partner who sees the breach, and a breach history that makes next week's declaration honest.</p></div></details>
+            <details><summary>What is the $19 for?</summary><div class="faq-body"><p>Your broker takes any order your account allows; it doesn't know your rules. The $19 buys the hour after a loss, held by something other than willpower: a declaration you confirm while calm, a panel that is red the moment a trade closes against your next-trade rule, a close seconds after a fill against that rule, a lock for the rest of the day when you reach your limit, a partner who sees the breach, and a breach history that makes next week's declaration honest.</p></div></details>
             <details><summary>The flatten happens after the fill. So what does it change?</summary><div class="faq-body"><p>The fill stands; the position does not. Seconds after a fill that breaks a declared rule, the Referee cancels the symbol's open orders and closes the position, the breach is logged and your partner is told. The fill stays on your record. What is before the click is the declaration and the red panel.</p></div></details>
-            <details><summary>It runs on my machine. Can't I just close it?</summary><div class="faq-body"><p>Yes. Closing it, letting the computer sleep, or pressing the kill switch stops the Referee holding your rules, and nothing stops you doing that. When it starts again it catches up on the fills it missed, and still closes a trade that broke a rule if that trade is open. How often people switch it off is a pilot metric; if it is common, the Referee becomes the declaration and the partner at a lower price, and we will say so.</p></div></details>
+            <details><summary>It runs on my machine. Can't I just close it?</summary><div class="faq-body"><p>Yes. Closing it, letting the computer sleep, or pressing the kill switch stops the Referee holding your rules, and nothing stops you doing that. When it starts again it reads the fills it missed today, and still closes a trade that broke a rule if that trade is open. A close that was under way when it stopped is not retried, so check your positions after a restart. How often people switch it off is a pilot metric; if it is common, the Referee becomes the declaration and the partner at a lower price, and we will say so.</p></div></details>
             <details><summary>What if the flattened trade would have won?</summary><div class="faq-body"><p>It gets flattened anyway. On the sample's record, the re-entry <span data-sample="trade.2026-03-11.ORBX.11:29.gapMin" data-format="int">6</span> minutes after a losing exit on Wed Mar 11 closed green. The rule was the trader's; the Referee never predicts a trade. Your record shows what the pattern does on average, and one trade does not change that. The panel shows which rule you were inside, and the rule is yours to change tomorrow, while calm.</p></div></details>
             <details><summary>Is this advice? Is the Referee telling me what to trade?</summary><div class="faq-body"><p>No. It holds the sentence you wrote and the number you put in it. It never chooses a trade, a level or a size, and the analyzer never tells you to take or avoid a trade; it shows your record and lets you write the rule. It is an educational tool, not investment advice. Past results do not predict future results.</p></div></details>
             <details><summary>Is it proven?</summary><div class="faq-body"><p>No. The Referee is designed to reduce rule breaches, the daily-loss kind above all. The Alpaca pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet, and we will publish the number either way. The reason we think the minutes after a loss matter is other people's work, cited above with its caveats: Coval and Shumway's study of one exchange's professional traders, OneFunded's own figure for its own failed evaluations, and hoc-trade's own dataset. None of that is evidence the Referee works. The pilot is.</p></div></details>
@@ -757,7 +756,7 @@
             <details><summary>Why does one draft rule have a number and the others don't?</summary><div class="faq-body"><p>A draft cites a statistic only when the group is solid (15 trades or more) and its 95% interval excludes your average. On the sample, the 3rd-trade rule qualifies (<span data-sample="group.tradeOfDay.3rd.n" data-format="int">26</span> trades, interval <span data-sample="ci.tradeOfDay.3rd.lo" data-format="pct">−1.53%</span> to <span data-sample="ci.tradeOfDay.3rd.hi" data-format="pct">−0.10%</span> against an average of <span data-sample="summary.avgReturn" data-format="pct">+0.33%</span>); the 10-minute rule does not (<span data-sample="group.afterPrev.< 10 min after a loss.n" data-format="int">13</span> trades, an early signal), so it is your rule with no number; the stop rule never can, because a fills export cannot show whether a stop was attached. Rules without numbers bind from trade one.</p></div></details>
             <details><summary>Is the sample real?</summary><div class="faq-body"><p>No. The sample is a fictional share trader generated by a script in the repository (scripts/make-sample.py) with planted patterns. The Apr 9 scenario applies the Referee's rules to the sample's record to show the mechanics, and says so where it appears. Every number from the sample is computed from that file by the engine, live, in this tab.</p></div></details>
             <details><summary>Do you see my trades?</summary><div class="faq-body"><p>No. The file is read in your browser's memory and never sent anywhere. Open the Network tab in your browser's developer tools, drop a file, and watch nothing go out. The only things this site ever sends are your email address, your platform and whether you have a partner in mind, if you join the waitlist.</p></div></details>
-            <details><summary>Is the analyzer really free?</summary><div class="faq-body"><p>Yes. It runs on your computer, so it costs nothing to run and stays free, with rule drafting, one manual rule, a private rules-kept score and the Record Card. The Referee is $19 a month or $169 a year, and is not for sale until the pilot has run.</p></div></details>
+            <details><summary>Is the analyzer really free?</summary><div class="faq-body"><p>Yes. It runs on your computer, so it costs nothing to run and stays free: your record, and three draft rules written from it. The Referee is $19 a month or $169 a year, and is not for sale until the pilot has run.</p></div></details>
             <details><summary>Can I check the math?</summary><div class="faq-body"><p>Yes. The engine lives in src/core with tests in test/, and the command-line tool prints the same report and the same three drafts: <code>npm run report -- --tz America/New_York your-trades.csv</code>.</p></div></details>
           </div>
         </div>

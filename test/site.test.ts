@@ -235,7 +235,7 @@ test('site: draftRules on the sample returns the three typed cards and the one n
       'Draft 1 · cites your record',
       'I stop after 2 trades a day.',
       'Your record shows: 26 third trades of the day, 42% winners, -0.81% a trade, net -$2,346. Solid: n = 26, 95% interval -1.53% to -0.10%, which excludes your average of +0.33%.',
-      'Held by: red once your 2nd trade is in; a 3rd fill is flattened.',
+      'Held by: red once your 2nd trade is in; the fill that opens a 3rd is flattened.',
     ],
     [
       'Draft 2 · your rule, no number',

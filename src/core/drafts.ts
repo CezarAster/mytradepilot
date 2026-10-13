@@ -118,7 +118,7 @@ function maxTradesDraft(max: number, noun: string, g: GroupStats, returns: numbe
     { maxTrades: max },
     'live flatten',
     noun,
-    `Held by: red once your ${ordinal(max)} trade is in; a ${ordinal(max + 1)} fill is flattened.`,
+    `Held by: red once your ${ordinal(max)} trade is in; the fill that opens a ${ordinal(max + 1)} is flattened.`,
     g,
     returns,
     overallAvg,
@@ -165,7 +165,7 @@ function typicalDayDraft(med: number, days: number): Draft {
     record: { cited: false, reason: 'from your typical day, not a statistic' },
     tag: '',
     recordLine: `Your typical day is ${max} ${plural(max, 'trade')}: the median over your ${days} ${plural(days, 'day')}, not a statistic about those trades. This is your rule; set the number you want.`,
-    heldLine: `Held by: red once your ${ordinal(max)} trade is in; a ${ordinal(max + 1)} fill is flattened.`,
+    heldLine: `Held by: red once your ${ordinal(max)} trade is in; the fill that opens a ${ordinal(max + 1)} is flattened.`,
   };
 }
 
@@ -190,8 +190,8 @@ function sizeDraft(): Draft {
     heldBy: 'live flatten',
     record: { cited: false, reason: 'your number' },
     tag: '',
-    recordLine: 'Your size is your number, not a statistic; no export decides it. Declare it before the session and the Referee holds it.',
-    heldLine: 'Held by: a fill above the declared size is flattened.',
+    recordLine: `Your size is your number, not a statistic; no export decides it. Put it in "I'm taking this" before the entry, and the Referee checks the opening fill against it.`,
+    heldLine: 'Held by: an opening fill above the size you declared is flattened.',
   };
 }
 

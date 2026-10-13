@@ -1,5 +1,7 @@
 # MyTradePilot website content spec: the Referee, on Equity River v2
 
+**2026-10-13:** retargeted from the Topstep Combine pilot to Alpaca (US stocks), to match the Referee app; the page is the source for the changed copy.
+
 **Status.** Final, 2026-10-10. Written for one engineer who will adapt the build-2 code from this document. It is the winning panel proposal (positioning and conversion lens) with the judges' grafts absorbed and every violation they listed fixed. It supersedes `docs/website-design-spec.md` sections 1 and 3 (positioning, copy, section order) and amends 4, 6 and 10 where named below; that spec's sections 2 (tokens, type, components), 5 (the river), 7 (DOM and data contract), 8 (performance) and 9 (mobile) stay in force.
 
 **Base.** `.claude/worktrees/build-2` (branch `build/equity-river-2`, commit `7a1afd5`): `index.html`, `src/web/site.css`, `src/web/main.ts`, `src/web/signup.ts`, `src/web/site/{index,motion,nav,river,pilot,story,preflight,tiles,labs,sample,reportMotion}.ts`, `src/core/*`, `test/site.test.ts`. Build 1 (`build/equity-river-1`) differs only in markup hygiene and is the comparison copy. Both branches are the untouched backup of the analyzer-era site; the Referee site is built on `main` on top of build 2.
@@ -41,15 +43,15 @@ Nothing on the page is a performance claim about the product, because the produc
 
 These terms are defined once on the page (Rulebook, "What pre-trade means here" and the states legend) and used identically everywhere.
 
-- **Rulebook**: the rules the trader writes while calm, in their own words, with their own numbers. Five kinds: max trades a day; stop attached within 15 seconds and never widened; declared size; cooldown after N losses; no entry within N minutes of a losing exit.
+- **Rulebook**: the rules the trader writes while calm, in their own words, with their own numbers. Five kinds: max trades a day; stop attached within 15 seconds and never widened; declared size; cooldown after N losses; no entry within N minutes of a losing exit. The daily loss limit is a Referee rule too ("realized plus open, it closes everything and locks the rest of the day"), and FAQ 7 lists every rule the app can hold.
 - **Draft**: a rule the analyzer writes from the trader's record. A draft cites a statistic only when the group is solid (n ≥ 15) and its 95% interval excludes the trader's own average; otherwise it is the trader's rule with no number.
-- **Declaration**: the rules the trader confirms before the session, with a timestamp. Max trades is written into TopstepX's own daily trade limit at declaration.
+- **Declaration**: the rules the trader confirms before the session, with a timestamp. Max trades is held like every other rule: the fill past the limit is a breach and is flattened ("The fill that opens a 4th trade is a breach: flatten, seconds after it lands.").
 - **Next-trade state**: computed the moment the previous trade closes. "Your rule says: no entry before 11:22." It is red before the hand moves.
-- **Flatten**: a reduce-only close that lands about two seconds after a fill that is against a declared rule. It is after the fill. The site never says otherwise, and never states the two seconds as a guarantee.
-- **States**: **Declared** (confirmed before the open, timestamped) · **Kept** (the session ended without a breach of it) · **Breached** (a fill against it: flattened on TopstepX, logged everywhere, pushed to the partner) · **Undeclared** (a fill with no declaration before it, on declare-and-reconcile; logged separately, counted against the declaration metric, not the breach count) · **Off** (the Referee is not holding the rules: agent closed, key expired, TopstepX open on another device, dry-run week, paused after a wrong flatten, kill switch on). The panel never looks on when it is off.
+- **Flatten**: the Referee cancels the symbol's open orders, then closes the position through Alpaca's close-position call, which can only reduce; it lands seconds after a fill that is against a declared rule. It is after the fill. The site never says otherwise, and never states a latency figure: the copy says "seconds", and the pilot publishes the real latency (limits 6).
+- **States**: **Declared** (confirmed before the open, timestamped) · **Kept** (the session ended without a breach of it) · **Breached** (a fill against it: flattened on the trader's Alpaca account, logged, posted to the partner's webhook) · **Undeclared** (a fill with no declaration before it; logged separately, counted against the declaration metric, not the breach count) · **Off** (the Referee is not holding the rules: app closed or computer asleep, Alpaca keys rejected, stream reconnecting, dry run (logging, not flattening), kill switch on). The panel never looks on when it is off.
 - **One fill, one breach**: a fill inside two windows is one breach, logged against the rule that set the later bind; the other window is written on the breach record.
 
-**Verb policy (counsel).** In the product's voice the Referee *holds* the rules you wrote, *binds* them, *answers the fill*, *flattens a fill against your own rule*, *writes Topstep's own lockout*. It never "enforces on your account", "directs", "decides", "manages", "coaches", "advises", "tells you", "checks your setup" or "skips". The word "enforce" appears only in the strategy's own button label, "Have the Referee enforce these", and in the pilot design's study term "dry-run versus enforced weeks". "Pre-trade" appears only inside its definition, never as a feature name.
+**Verb policy (counsel).** In the product's voice the Referee *holds* the rules you wrote, *binds* them, *answers the fill*, *flattens a fill against your own rule*, *closes* the position, *locks the rest of the day* at the trader's own breach limit. It never "enforces on your account", "directs", "decides", "manages", "coaches", "advises", "tells you", "checks your setup" or "skips". The word "enforce" appears only in the strategy's own button label, "Have the Referee enforce these", and in the pilot design's study term "dry-run versus enforced weeks". "Pre-trade" appears only inside its definition, never as a feature name.
 
 ### The hypothetical-results statement (`.cftc-441`)
 
@@ -80,7 +82,7 @@ Every element that prints a what-if figure gets the attribute `data-whatif`; a t
 
 ### The pilot statement (verbatim, used in Limits 5, the band, FAQ 6 and 10, the roadmap)
 
-> The Referee is designed to reduce daily-loss breaches and resets. The Topstep pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet.
+> The Referee is designed to reduce rule breaches, the daily-loss kind above all. The Alpaca pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet.
 
 ---
 
@@ -88,9 +90,9 @@ Every element that prints a what-if figure gets the attribute `data-whatif`; a t
 
 **Positioning line** (nav tagline at ≥ 1400 px; footer): `You write the rule while calm. The Referee holds it when you are not.`
 
-**`<title>`:** `MyTradePilot: write the rule calm. The Referee holds it on TopstepX.`
+**`<title>` and `og:title`:** `MyTradePilot: write the rule calm. The Referee holds it on your Alpaca account.`
 
-**`<meta name="description">` and `og:description`:** `MyTradePilot's free analyzer reads your trade export in your browser, uploads nothing, and shows your record: where you make money, where you give it back, and three draft rules written from it. Declare the rules you keep, and the Referee holds them on TopstepX: a fill against your own rule is flattened about two seconds after it lands, the breach is logged, and your partner is told. Topstep Combine pilot, late December 2026.`
+**`<meta name="description">` and `og:description`:** `MyTradePilot's free analyzer reads your trade export in your browser, uploads nothing, and shows your record: where you make money, where you give it back, and three draft rules written from it. Declare the rules you keep, and the Referee holds them on your Alpaca account from your own computer: a fill against your own rule is closed seconds after it lands, the breach is logged, and your partner is told. Alpaca pilot, late December 2026.`
 
 **Hero headline** (h1, `data-split="words"`, one `<em>`; must wrap on two lines at 1280–1440 like build-2's 45-character headline):
 
@@ -98,9 +100,9 @@ Every element that prints a what-if figure gets the attribute `data-whatif`; a t
 - Alternate A2: `Your rule, written calm. <em>Held</em> when you are not.` (46). The panel winner's line; "held" is softer and counsel-safe, use it if the client prefers the noun-first rhythm.
 - Alternate A3: `You know the rule. Make it <em>bind</em>.` (33). Punchiest, but it names neither the record nor the calm moment; use as a social headline, not the h1.
 
-**Eyebrow:** `The Referee · Free analyzer now · Topstep Combine pilot late December 2026`
+**Eyebrow:** `The Referee · Free analyzer now · Alpaca pilot late December 2026`
 
-**Lede:** `Drop a TradingView or broker export, free and in your browser, nothing uploaded. See where you make money, where you give it back, and three draft rules written from your record. Declare the ones you keep; on TopstepX the Referee holds them, and a fill against your own rule is flattened about two seconds after it lands, logged, and sent to your partner. Pilot late December 2026.`
+**Lede:** `Drop a TradingView or broker export, free and in your browser, nothing uploaded. See where you make money, where you give it back, and three draft rules written from your record. Declare the ones you keep; on your Alpaca account the Referee holds them, and a fill against your own rule is closed seconds after it lands, logged, and sent to your partner. Pilot late December 2026.`
 
 **CTA labels and their build-2 contracts:**
 
@@ -135,12 +137,12 @@ Every element that prints a what-if figure gets the attribute `data-whatif`; a t
 | 3 | What do I get? | Counters, then the story: record → rule → held | real numbers, one real sample day |
 | 4 | Is the problem real, or just me? | Why: three outside findings, each with its source and caveat | cited |
 | 5 | What is a rule, concretely? | Rulebook, the declaration card, the breach moment, the day card | five kinds, the trader's own sentences |
-| 6 | Topstep's lockout is free; what is $19 for? | Bento "What the $19 is for" | the six things the lockout does not do |
-| 7 | Who sees it? | Partner | one seat, read-only, free; sees the breach and the bypass |
+| 6 | My broker fills my orders already; what is $19 for? | Bento "What the $19 is for" | Alpaca fills what you send and doesn't know your rules; the six tiles are what the Referee adds |
+| 7 | Who sees it? | Partner | one Discord or Telegram webhook, free for them; every breach and every flatten |
 | 8 | After the fill; I can close it; proven?; advice? | Honest limits, before the price | said plainly |
 | 9 | How much, and when? | Pricing | one plan, money-back, cancel, not for sale yet |
 | 10 | Cherry-picked numbers? | Shrink lab | the exact rule, and why a draft has no number |
-| 11 | Will my trades or my key leak? | Methodology and data | DevTools check; what the server holds |
+| 11 | Will my trades or my key leak? | Methodology and data | DevTools check; keys, rules, fills and the breach log stay on your computer; no server of ours |
 | 12 | How do I export? | Export how-to | menu paths |
 | 13 | What ships when? | Rungs | pilot late December 2026 |
 | 14 | The ask | Band | email, platform, partner in mind |
@@ -165,7 +167,7 @@ Desktop = ≥ 769 px; "375" = the phone layout (16px gutters). Classes and ids a
 | 8 | `#features` | What the $19 is for (bento) | `tiles.ts` (verbatim), six new loops |
 | 9 | `#partner` | The partner | NEW static |
 | 10 | `#limits` | Honest limits | NEW static |
-| 11 | `#pricing` | Free vs Referee, the Topstep key | NEW static |
+| 11 | `#pricing` | Free vs Referee, what you need | NEW static |
 | 12 | `#shrink-lab` | Honest statistics | `labs.ts` (shrink only; ids renamed) |
 | 13 | `#method` | Methodology and data | method + privacy wire (verbatim) + NEW data block |
 | 14 | `#export` | Export how-to | verbatim |
@@ -237,7 +239,7 @@ Card style: `--surface`, 1px `--line-strong`, 3px left rule `--accent`, radius 8
 
 **On the sample the three cards must read exactly** (S; asserted in `test/site.test.ts`):
 
-1. tag `Draft 1 · cites your record` · sentence `I stop after 2 trades a day.` · record `Your record shows: 26 third trades of the day, 42% winners, -0.81% a trade, net -$2,346. Solid: n = 26, 95% interval -1.53% to -0.10%, which excludes your average of +0.33%.` · held `Held by: written into TopstepX's own daily trade limit at declaration. Topstep's platform refuses the 3rd.`
+1. tag `Draft 1 · cites your record` · sentence `I stop after 2 trades a day.` · record `Your record shows: 26 third trades of the day, 42% winners, -0.81% a trade, net -$2,346. Solid: n = 26, 95% interval -1.53% to -0.10%, which excludes your average of +0.33%.` · held `Held by: red once your 2nd trade is in; the fill that opens a 3rd is flattened.`
 2. tag `Draft 2 · your rule, no number` · sentence `I don't enter within 10 minutes of a losing exit.` · record `Your record has 13 re-entries inside 10 minutes of a loss: an early signal, under the 15 trades a draft needs before it cites a number. This is your rule, not a statistic.` · held `Held by: red at the losing exit; a fill inside 10 minutes is flattened.`
 3. tag `Draft 3 · your rule, no number` · sentence `A stop is on within 15 seconds of every fill. I never widen it.` · record `A fills export can't show whether a stop was attached or moved, so this draft never carries a number. The Referee's live feed can see both.` · held `Held by: a fill with no stop at 15 seconds, or a stop moved away from price, is flattened.`
 
@@ -248,7 +250,7 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
 - `enforce`: read every `[data-draft-sentence]` under `#drafts`; write them to `sessionStorage['mtp-drafts']` as JSON (per-viewer convenience only, in try/catch; never read back by anything but this page); set `#signup-context` (section 2.16) to `Joining with 3 draft rules. They stay in this tab; we get your email.` (the count from the DOM); scroll to `#signup` with the usual offset; focus `#signup-email` without scrolling. Nothing is posted.
 - `copy-rules`: copy the sentences joined by newlines with `navigator.clipboard.writeText`, fallback to a temporary textarea + `execCommand('copy')`; the button text becomes `Copied` for 1.6 s. Nothing leaves the tab.
 
-**Followup (`#report-followup`, copy rewritten):** eyebrow `Next step` · h2 `Rules found is step one. Rules <em>kept</em> is the product.` · lede `The Referee is the paid part, in pilot with Topstep Combine traders from late December 2026: the rules you ratify, declared before each session and held on TopstepX through the ProjectX API, with a partner who sees every breach. Join the waitlist and you pick your seat when the pilot opens.` · ghost `Analyze another file ↑` · mini form `#signup-report`: label (sr) `Email address`, placeholder `you@example.com`, button `Join the Referee waitlist`, small print `We only get your email address, never your trades or your rules. Unsubscribe anytime.`
+**Followup (`#report-followup`, copy rewritten):** eyebrow `Next step` · h2 `Rules found is step one. Rules <em>kept</em> is the product.` · lede `The Referee is the paid part, in pilot with Alpaca traders from late December 2026: the rules you ratify, declared before each session and held on your Alpaca account by an app on your own computer, with a partner who sees every breach. Join the waitlist and you hear first when the pilot opens.` · ghost `Analyze another file ↑` · mini form `#signup-report`: label (sr) `Email address`, placeholder `you@example.com`, button `Join the Referee waitlist`, small print `We only get your email address, never your trades or your rules. Unsubscribe anytime.`
 
 `reportMotion.ts`: add `.draft` to the arrival stagger (after `.insight`) and keep everything else.
 
@@ -256,7 +258,7 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
 
 1. (lock) **Nothing uploaded** — `the analyzer reads your file in this tab and never sends it; refresh and it is gone.`
 2. (check) **Free, no account** — `no sign-up to see your record or your draft rules; the engine and its tests are public.` ("public" links to the repository)
-3. (NEW glyph: an 18px outlined pennant) **In pilot, not for sale** — `the Referee has no result yet. The Topstep Combine pilot in late December 2026 is where it gets one.`
+3. (NEW glyph: an 18px outlined pennant) **In pilot, not for sale** — `the Referee has no result yet. The Alpaca pilot in late December 2026 is where it gets one.`
 
 ### 2.4 The record `#numbers` (re-purposes: counters; fourth counter rebound)
 
@@ -275,7 +277,7 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
   1. **It reads your fills.** `Any broker CSV with symbol, side, quantity, price, time. TradingView trade lists too. Fills are matched into round trips, duplicates dropped.`
   2. **It sorts your record.** `Every trade is tagged: New York entry time, trade number of the day, what came before, direction, hold time. Here, by trade of the day. Your 1st trades: 45, 73% winners, +0.94% a trade. Your 3rd: 26, 42% winners, −0.81%.` (each number a `data-sample` span)
   3. **You write the rule.** `Your record shows 26 third trades of the day, net −$2,346. Solid: n = 26, 95% interval −1.53% to −0.10%, which excludes your average of +0.33%. The draft reads: I stop after 2 trades a day. Keep it, strike it, or change the number. The rule is yours.` (bound: `group.tradeOfDay.3rd.n`, `.totalPnl`, `ci.tradeOfDay.3rd.lo`, `.hi`, `summary.avgReturn`, `drafts.0.sentence`)
-  4. **The Referee holds it.** `Thu Apr 9 in this record: a loss closes at 11:12. At 11:15 the same trader fills a short, three minutes after that losing exit, the 3rd trade of the day. Your rule says: no entry before 11:22. With the Referee on TopstepX, that fill is flattened about two seconds after it lands, the breach is logged, your partner is told, and the panel deep-links to Topstep's own lockout. The flatten is after the fill. The declaration and the red panel are before it.` (bound: `trade.2026-04-09.HYDR.10:00.exit`, `trade.2026-04-09.ORBX.11:15.entry`, `.gapMin`, `.tradeOfDay`)
+  4. **The Referee holds it.** `Thu Apr 9 in this record: a loss closes at 11:12. At 11:15 the same trader fills a short, 3 minutes after that losing exit, the 3rd trade of the day. Your rule says: no entry before 11:22. With the Referee on your Alpaca account, that fill is closed seconds after it lands, the breach is logged, and your partner is told. The flatten is after the fill. The declaration and the red panel are before it.` (bound: `trade.2026-04-09.HYDR.10:00.exit`, `trade.2026-04-09.ORBX.11:15.entry`, `.gapMin`, `.tradeOfDay`)
 - Story CTA `Run this on your trades` · footnote `The flatten is after the fill. Nothing on this page says otherwise.`
 
 ### 2.6 Why the minutes after a loss `#why` (NEW; static, reveals)
@@ -284,13 +286,13 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
 
 *Layout:* `--bg-2` strip with 1px `--line` top and bottom, like `#trust`; section head; three `.cite` cards in a row (stack at 375): big number Instrument Serif 400 40px/1 `--text`; sentence 15px/1.5 `--text-2`; source mono 500 11px `--muted`; caveat 13px/1.5 `--muted`; cards `--surface-2`, 1px `--line`, radius 14, `padding: 20px`; reveal stagger .08.
 
-- Eyebrow `Why the minutes after a loss` · h2 `The rule is known. It breaks in one <em>window</em>.` · lede `Not for lack of information. The window is the minutes after a losing trade, inside an evaluation, before the next entry. Three outside findings, each with its source and its caveat.`
-- Card 1 (T): `78.7%` · `of one firm's failed evaluations ended on a daily-loss-limit breach.` · source `OneFunded, company blog, 2025` (links to the strategy's URL) · caveat `Firm-published; no methodology given; one firm's accounts.`
-- Card 2 (T): `31.2% vs 27.0%` · `Professional floor traders who lost money in the morning were about 16% more likely to take above-average risk that afternoon, and placed more and larger trades.` · source `Coval and Shumway, Journal of Finance 60(1), 2005` · caveat `CBOT proprietary traders, 1998 data; not retail, not evaluation accounts.`
+- Eyebrow `Why the minutes after a loss` · h2 `The rule is known. It breaks in one <em>window</em>.` · lede `Not for lack of information. The window is the minutes after a losing trade, before the next entry. Three outside findings, each with its source and its caveat.`
+- Card 1 (T): `78.7%` · `of one firm's failed evaluations ended on a daily-loss-limit breach.` · source `OneFunded, company blog, 2025` (links to the strategy's URL) · caveat `Firm-published; no methodology given; one firm's prop-firm evaluations, not stock accounts.`
+- Card 2 (T): `31.2% vs 27.0%` · `Professional floor traders who lost money in the morning were about 16% more likely to take above-average risk that afternoon, and placed more and larger trades.` · source `Coval and Shumway, Journal of Finance 60(1), 2005` · caveat `CBOT proprietary traders, 1998 data; not retail, not stocks.`
 - Card 3 (T): `37%` · `of traders in one vendor's dataset showed revenge trading, at about $1,917 each.` · source `hoc-trade, from its own 500,000-account dataset` · caveat `The vendor's own definition and data; not peer-reviewed.`
 - Line under the cards (`.small.muted`): `Every number above is someone else's, cited with its source. Every number below is the sample's, yours, or labelled illustrative.`
 - Footnote: `None of these is a claim about the Referee. It has no result yet; the pilot is where it gets one.`
-- Deliberately omitted: Topstep's published pass rate. A pass rate next to a product reads as a pass-rate claim.
+- Deliberately omitted: any firm's or broker's published pass rate. A pass rate next to a product reads as a pass-rate claim.
 
 ### 2.7 The rulebook `#rulebook` (NEW section; re-purposes the preflight module as the declaration card; mock in section 4)
 
@@ -298,37 +300,37 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
 
 *Layout:* section head; then a 6/6 grid: left `#rulebook-list` (five rows in a `--surface-2` panel, 1px `--line`, radius 14) with the two lines and the convention line under it; right `#decl-slot` › `#decl-stage` › `#declaration` (the flipping card, slot min-height rule as build-2) with `#day-card` under it; then the states legend and the callout full width; footnote. 375: head, list, card, day card, legend, callout.
 
-- Eyebrow `The rulebook` · h2 `Five kinds of rule. All of them <em>yours.</em>`
+- Eyebrow `The rulebook` · h2 `Your rules, in your words. All of them <em>yours.</em>`
 - Lede: `You write them while calm, in your own words, with your own numbers. The analyzer drafts; you ratify. Before the session you declare the ones that bind today. The Referee's job is to hold them, not to have opinions about your trades.`
 - Rows (`.rule-type`: mono kind `--accent` 12px · serif 19px sentence in quotes `--text` · 14px `--text-2` "how it is held"):
-  1. `Max trades a day` · `"I stop after 3 trades a day."` · `Written into TopstepX's own daily trade limit at declaration. Topstep's platform refuses the 4th.`
+  1. `Max trades a day` · `"I stop after 3 trades a day."` · `The fill that opens a 4th trade is a breach: flatten, seconds after it lands.`
   2. `Stop attached` · `"A stop is on within 15 seconds of every fill. I never widen it."` · `A fill with no stop at 15 seconds, or a stop moved away from price, is a breach: flatten.`
-  3. `Declared size` · `"2 contracts. Not 3."` · `A fill above the declared size is a breach: flatten.`
+  3. `Declared size` · `"200 shares. Not 300."` · `Say the size when you press "I'm taking this". An opening fill more than your tolerance above it is a breach.`
   4. `Cooldown` · `"After 2 losses I stop for 20 minutes."` · `The next-trade state goes red when the 2nd loss closes; a fill inside the window is a breach: flatten.`
   5. `No re-entry` · `"I don't enter within 10 minutes of a losing exit."` · `Red at the losing exit; a fill inside 10 minutes is a breach: flatten.`
-- Under the list (`.small.muted`, two lines): `The Referee never sets a level or a size. It holds the number you wrote.` · `Your daily loss limit is not a Referee rule. Set it in TopstepX's own Liquidate and Block.`
-- Convention line (`.small`): `A fill inside two windows is one breach, logged against the rule that set the later bind; the other window is written on the breach record. One fill is never two breaches.`
+- Under the list (`.small.muted`, two lines): `The Referee never sets a level or a size. It holds the number you wrote.` · `Your daily loss limit is a rule too: realized plus open loss past your number closes everything and, if you choose, locks the rest of the day.`
+- Convention line (`.small`): `A fill can break more than one of your rules at once. Each one is logged as its own breach, and each counts toward your breaches-a-day limit.`
 - Declaration card and day card: section 4.2 and 4.3.
-- States legend (`.state-chips`, pills with one-line definitions): `Declared` (accent) `confirmed before the open, timestamped` · `Kept` (`--pos`) `the session ended without a breach of it` · `Breached` (`--neg`) `a fill against it: flattened, logged, pushed to your partner` · `Undeclared` (`--weak`) `a fill with no declaration before it; logged separately, counted against declaration-before-fill, not against breaches` · `Off` (`--muted` band) `agent closed · key expired, sign in to Topstep again · TopstepX open on another device · dry-run week, logging not flattening · paused after a wrong flatten, post-mortem pending · kill switch on. The panel never looks on when it is off.`
-- Callout `What "pre-trade" means here` (`--surface-2`, 1px `--line`, radius 14, 16px `--text-2`): `Two things, and only two. The declaration you confirm before the session, and the next-trade state the Referee computes the moment the previous trade closes, so the panel is red before your hand moves. No platform exposes a pre-submission hook, so the flatten itself is after the fill, about two seconds after. Your record shows the fill. The breach log shows the rule.`
+- States legend (`.state-chips`, pills with one-line definitions): `Declared` (accent) `confirmed before the open, timestamped` · `Kept` (`--pos`) `the session ended without a breach of it` · `Breached` (`--neg`) `a fill against it: flattened, logged, pushed to your partner` · `Undeclared` (`--weak`) `a fill with no declaration before it; logged separately, counted against declaration-before-fill, not against breaches` · `Off` (`--muted` band) `app closed or computer asleep · Alpaca keys rejected · stream reconnecting · dry run, logging not flattening · kill switch on. The panel never looks on when it is off.`
+- Callout `What "pre-trade" means here` (`--surface-2`, 1px `--line`, radius 14, 16px `--text-2`): `Two things, and only two. The declaration you confirm before the session, and the next-trade state the Referee computes the moment the previous trade closes, so the panel is red before your hand moves. No retail broker lets an outside app veto an order before it is accepted, so the flatten itself is after the fill, seconds after. Your record shows the fill. The breach log shows the rule.`
 - Section CTA (ghost): `See the three drafts on the sample →` (`demo`).
 - Footnote: `Draft said 2. You set 3. The rule is yours.`
 
 ### 2.8 What the $19 is for `#features` (re-purposes: bento, six tiles; all content and loop figures replaced)
 
-*Purpose:* answer the free-lockout objection head-on and list what the Referee does. *Conversion role:* turns the objection into the reason to pay; hands off to Partner and Limits. *Layout:* unchanged 3-column bento (2 at ≤ 1024, 1 at ≤ 768); each tile keeps a 140px `.loop`; the six figures are new inline SVG loops (concepts below; `tiles.ts` only toggles `.is-visible`).
+*Purpose:* answer "my broker already fills my orders; what is the $19 for?" head-on and list what the Referee does. *Conversion role:* turns the objection into the reason to pay; hands off to Partner and Limits. *Layout:* unchanged 3-column bento (2 at ≤ 1024, 1 at ≤ 768); each tile keeps a 140px `.loop`; the six figures are new inline SVG loops (concepts below; `tiles.ts` only toggles `.is-visible`).
 
 - Eyebrow `What the $19 is for`
-- h2 `Topstep's lockout is free. Keep it. The Referee is for the hour <em>before</em> you would reach for it.`
-- Lede: `TopstepX ships irreversible lockouts and a Liquidate-and-Block daily loss limit at no charge, and they are the only controls nobody can bypass. The Referee is an add-on to them, never a substitute. It holds the rules the platform doesn't know about: yours.`
+- h2 `Your broker takes any order your account allows. The Referee holds the <em>rules</em> you wrote.`
+- Lede: `Alpaca takes what your account allows; it doesn't know the rules you wrote while calm. The Referee runs on your computer, watches every fill on your Alpaca account, and holds those rules: the trade count, the re-entry window, the cooldown, the stop, the size, the daily loss and the rest.`
 - Tiles (eyebrow · h3 · p · loop concept):
-  1. `Declare` · `Confirm your rules before the session.` · `A hotkey, a card, a timestamp. Max trades is written straight into TopstepX's own daily limit while you are calm.` · loop `declare` (5s): five short rows tick in, a mono `9:25:14` stamp presses.
+  1. `Declare` · `Confirm your rules before the session.` · `Confirm the day's plan once before the open, with a timestamp. Before each entry, one button: "I'm taking this".` · loop `declare` (5s): five short rows tick in, a mono `9:25:14` stamp presses.
   2. `Red before your hand moves` · `The next-trade state.` · `When a trade closes, the panel already knows what your rule says about the next one: "no entry before 11:22".` · loop `state` (5s): a mono clock counts 11:12 → 11:22 while a panel outline's left rule goes `--neg` → `--line-strong`.
-  3. `Flatten` · `About two seconds after a fill against your rule.` · `Reduce-only. The fill stands on your record and in Topstep's statistics; the breach goes on your breach log. One flatten escalates: a deep link writes Topstep's own irreversible lockout.` · loop `flatten` (5.5s): `11:15:00 FILL` (red bar) → `11:15:02 FLAT` (blue bar) → `→ LOCKOUT` chip lights.
-  4. `Partner` · `One read-only seat, free.` · `Breach pushes to one person you choose. They see the breach, and they see when the Referee is off.` · loop `partner` (4.4s): a phone outline receives one push line `breach · 11:15:02`.
-  5. `Breach log` · `Next week's declaration, honest.` · `Declared, kept, breached, undeclared: each day scored privately. The history is what makes the next declaration a real one.` · loop `log` (5s): five day tiles tick in `4/5 · 5/5 · 5/5 · 3/5 · 5/5`.
-  6. `Record Card` · `One stat, shareable.` · `A PNG of your rules-kept score with the hypothetical-results statement baked in, in full. Private day cards have no share button.` · loop `card` (5s): a card renders `RULES KEPT · 23 of 25`, then a labelled block `HYPOTHETICAL-RESULTS STATEMENT · full text on the real card` fades in along the lower third. Tile caption (`.small.muted`): `Illustrative. The number is invented; the statement is not.`
-- Footnote: `An add-on to Topstep's lockout, never a substitute.`
+  3. `Flatten` · `Seconds after a fill against your rule.` · `It cancels the symbol's open orders, then closes the position through Alpaca's close-position call, which can only reduce. The fill stays on your record; the breach goes on your breach log. Reach the breach limit you set for the day, and the rest of it is locked.` · loop `flatten` (5.5s): `11:15:00 FILL` (red bar) → `11:15:02 FLAT` (blue bar) → `→ LOGGED` chip lights.
+  4. `Partner` · `One channel, free for them.` · `Paste a Discord or Telegram webhook, and every breach and every flatten is posted there, for the person you choose.` · loop `partner` (4.4s): a phone outline receives one push line `breach · 11:15:02`.
+  5. `Breach log` · `Next week's declaration, honest.` · `Every breach, with the rule, the time and what the Referee did, and every declared and undeclared entry, in the log on your computer. The history is what makes the next declaration a real one.` · loop `log` (5s): five day tiles tick in `4/5 · 5/5 · 5/5 · 3/5 · 5/5`.
+  6. `Record Card` · `One stat, shareable. Planned.` · `A PNG of your rules-kept score with the hypothetical-results statement baked in, in full. Not built yet: it comes after the pilot.` · loop `card` (5s): a card renders `RULES KEPT · 23 of 25`, then a labelled block `HYPOTHETICAL-RESULTS STATEMENT · full text on the real card` fades in along the lower third. Tile caption (`.small.muted`): `Illustrative. The number is invented; the statement is not.`
+- Footnote: `It holds your rules. It never opens a position.`
 - Section CTA (ghost): `Read the honest limits ↓`
 
 ### 2.9 The partner `#partner` (NEW; static, CSS only)
@@ -336,11 +338,11 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
 *Purpose:* the third conversion action and the answer to "who sees it". *Conversion role:* sets up the invite in the band. *Layout:* desktop 7/5, copy left, a phone-shaped push mock right (`--surface-2`, radius 22, 1px `--line-strong`, 280px wide, two notification cards inside); 375: stacked, mock centred.
 
 - Eyebrow `The partner` · h2 `Someone sees the breach. That is the <em>point.</em>`
-- Body: `Every Referee account comes with one read-only partner seat, free for them. Your partner sees your declaration each morning and every breach push: the rule, the time, never your P&L. They cannot trade and cannot change a rule. If the agent is closed or the key is revoked mid-session, they are told the Referee is off.`
-- Push mock (head mono `Illustrative`): card 1, app line `The Referee · 11:15`, text `Sam filled 3 minutes after a losing exit. Rule: no entry within 10 minutes. Flattened at 11:15:02. Breach 1 today.`; card 2, app line `The Referee · 13:02`, text `The Referee is off: agent closed. Sam's rules are not being held.`
+- Body: `Paste your partner's Discord or Telegram webhook into the Referee's settings, and every breach and every flatten is posted to them: the rule, the time, and what the Referee did. It costs them nothing. They cannot trade and cannot change a rule.`
+- Push mock (head mono `Illustrative`): card 1, app line `The Referee · 11:15`, text `Sam filled 3 minutes after a losing exit. Rule: no entry within 10 minutes. Flattened at 11:15:02. Breach 1 today.`; card 2, app line `The Referee · 13:02`, text `Sam is locked out for the rest of the day: 3 rule breaches today, and the limit is 3. Every new entry will be closed.`
 - Small, muted: `Names and times are illustrative. The rule and the mechanics are the product's.`
 - CTA (ghost): `Invite your partner when you join ↓`
-- Footnote: `Your partner sees the breach. And the bypass.`
+- Footnote: `Your partner sees the breach. And the lock.`
 
 ### 2.10 Honest limits `#limits` (NEW; static)
 
@@ -348,46 +350,45 @@ Not-a-rule line (one sentence per solid leak whose dimension has no Referee rule
 
 - Eyebrow `Honest limits` · h2 `Read this <em>before</em> you pay.` · lede `Everything here is also in the FAQ. It is here so you do not have to look for it.`
 
-1. **It cannot stop your click.** `No trading platform exposes a hook before an order is submitted. The Referee answers the fill: about two seconds after a fill that breaks a declared rule, a reduce-only close lands and the breach is logged. The flattened fill paid commission and counts in Topstep's own statistics. "Pre-trade" means two things only: the declaration before the click, and the next-trade state computed when the previous trade closes.`
-2. **It runs on your machine, and you can turn it off.** `The agent runs locally and holds your API key in the operating system's keychain. The Referee stops holding your rules when the agent is closed, the key is revoked, or TopstepX is opened on another device. It records that gap as a bypass, the panel shows Off, and your partner is told. If the pilot shows bypass is common, we will say so, and the product becomes the declaration and the partner at a lower price.`
-3. **An add-on, never a substitute.** `TopstepX's own lockouts and daily loss limit are the only controls nobody can bypass. Keep them on. After one flatten the Referee deep-links you to Topstep's irreversible lockout; it does not replace it.`
-4. **TopstepX only, at launch.** `Live flattening needs Topstep's ProjectX API key, which you buy from Topstep ($29 a month, $14.50 with their code), and it covers Combine and Express Funded accounts; Topstep excludes Live Funded accounts from the API. Everyone else, including Live Funded graduates, Tradovate evaluation, Apex and Rithmic traders, gets declare-and-reconcile: a hotkey declaration, a one-tap "stopped out", overnight reconciliation from your export, undeclared trades logged as undeclared. It nudges; it cannot flatten.`
-5. **Nothing is proven yet.** `The Referee is designed to reduce daily-loss breaches and resets. The Topstep pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet. We will publish the number either way.`
-6. **Two seconds is a target, not a guarantee.** `Two seconds is the design target measured on the ProjectX feed in dry-run. The pilot publishes the real latency. Reduce-only orders are to be confirmed with Topstep before the first enforced week.`
-7. **Wrong flattens.** `Partial fills, scale-ins, bracket children, flips, reconnects and token expiry are exactly where a flatten can be wrong. So: your first week is a dry run that flattens nothing; there is a visible kill switch; any wrong flatten pauses the Referee on that account, credits the commission, and gets a post-mortem before it is switched back on. The gate is under one wrong flatten per hundred trader-weeks.`
+1. **It cannot stop your click.** `No retail broker lets an outside app veto an order before it is accepted. The Referee answers the fill: in market hours, seconds after a fill that breaks a declared rule, it cancels the symbol's open orders, closes the position at market, and logs the breach. The flattened fill stays on your record, and a market close in a fast stock can fill worse than you expect. "Pre-trade" means two things only: the declaration before the click, and the next-trade state computed when the previous trade closes.`
+2. **It runs on your computer, and you can turn it off.** `The Referee is an app on your computer, and your Alpaca keys stay there, in a file only your user account can read. It holds your rules only while it runs: closing it, or a laptop going to sleep, stops it, and the kill switch stops it flattening anything, at once. When it starts again it reads the fills it missed today, and still closes a trade that broke a rule if that trade is open. A close that was under way when it stopped is not retried, so check your positions after a restart. If the pilot shows people switch it off when it matters, we will say so, and the product becomes the declaration and the partner at a lower price.`
+3. **It can only reduce.** `There is no order ticket. The Referee cancels orders and closes positions through Alpaca's close-position call; it never opens a position or adds to one. It is not a lock nobody can undo: you can always turn it off, which is why your partner sees the breach.`
+4. **Alpaca only, at launch.** `The Referee connects to an Alpaca account with your own API keys, paper or live, and holds rules on US stocks and ETFs. Paper comes first. Other brokers come after the pilot, if it works, and only where the broker's API lets an app read your fills and close a position. On any broker, the free analyzer works with your export today.`
+5. **Nothing is proven yet.** `The Referee is designed to reduce rule breaches, the daily-loss kind above all. The Alpaca pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet. We will publish the number either way.`
+6. **Seconds, not milliseconds.** `Alpaca will not close shares that an open order still holds, so the Referee cancels the symbol's orders first, waits for Alpaca to confirm, then closes. That takes seconds, and longer when Alpaca is slow or rate-limits the account. Outside regular market hours a market close can wait for the open, and on a margin account under $25,000 Alpaca's pattern-day-trader protection can refuse a close: then the Referee retries, and tells you and your partner it could not close. The pilot publishes the real latency.`
+7. **Wrong flattens.** `Partial fills, scale-ins, bracket legs, flips, missed fills and reconnects are exactly where a flatten can be wrong. So: the Referee starts in dry run and flattens nothing until you switch it on; there is a visible kill switch; every action it takes is in its log; and any wrong flatten in the pilot gets a post-mortem before flattening goes back on. The gate is under one wrong flatten per hundred trader-weeks.`
 8. **Not advice.** `The Referee never chooses a trade, a level or a size. It holds the sentence you wrote and the number you put in it. The analyzer shows your record; it does not tell you what to do with it.`
-9. **Outside the United States.** `At launch the flatten is geofenced to US accounts. EU users get declare-and-reconcile and partner pushes, which decide nothing automatically. No cohort comparisons anywhere outside the US.`
-10. **Not in year one.** `No order ticket, no veto, no AI chat, no mobile app, no NinjaTrader, no market replay, no live equities rung, no firm-paid contracts, and no comparisons of you with other traders, of any kind.`
+9. **Outside the United States.** `At launch, live flattening is for US accounts. Elsewhere the Referee runs in dry run: it declares, logs and posts to your partner, and decides nothing automatically. No cohort comparisons anywhere outside the US.`
+10. **Not in year one.** `No order ticket, no veto, no AI inside the app, no mobile app, no options or crypto rules, no broker but Alpaca, no market replay, and no comparisons of you with other traders, of any kind. If you use Claude, it can read your Referee through MCP on your own Claude subscription; it cannot change a rule or switch the Referee off.`
 
 - Footnote: `If the pilot says it doesn't work, this page will say so.`
 
 ### 2.11 Pricing `#pricing` (NEW; static)
 
-*Purpose:* one plan, every number sourced, nothing for sale today. *Layout:* three cards in a 5/5/2 row (Free · Referee with the band's accent ring · the narrow Topstep key card), then two `.pricing-notes` rows, then the footnote; 375: stacked, Referee first.
+*Purpose:* one plan, every number sourced, nothing for sale today. *Layout:* three cards in a 5/5/2 row (Free · Referee with the band's accent ring · the narrow "What you need" card), then two `.pricing-notes` rows, then the footnote; 375: stacked, Referee first.
 
 - Eyebrow `Pricing` · h2 `One plan. Not for sale until the pilot says it <em>works.</em>` · lede `No AI credits, no auto-charging trial, no tiers. The price is published now so you can judge the pilot's result against it.`
 
 **Free** · `$0` · `forever, in your browser`
 - The analyzer: edges, leaks, stop check, breakdowns
 - Three draft rules from your record
-- One manual rule, kept by hand
-- Your private rules-kept score
-- The Record Card
+- The same report on the command line
+- Nothing uploaded, no account
 Button: `Run the free analyzer`
 
-**Referee** · `$19 a month` · `or $169 a year ($14.08 a month)` · chip `Topstep Combine pilot · late December 2026`
-- Live connection to TopstepX via the ProjectX API
-- Unlimited rules, declaration, next-trade state
-- Flatten, cooldown, escalation to Topstep's own lockout
-- One read-only partner seat, free for them
-- Declare-and-reconcile for your other accounts
-- 14-day money-back · one-click cancel · your rulebook and history kept between Combines
+**Referee** · `$19 a month` · `or $169 a year ($14.08 a month)` · chip `Alpaca pilot · late December 2026`
+- Runs on your computer, connected to your Alpaca account
+- All eleven rule types with your numbers, declaration, next-trade state
+- Flatten, cooldown, daily loss limit, lock for the rest of the day
+- Breach posts to your partner's Discord or Telegram
+- Your history from any broker's export
+- 14-day money-back · one-click cancel · your rules and history stay on your computer
 Button: `Join the waitlist` · small `Pilot traders pay this price. It is the price we are testing, not a discount.`
 
-**Topstep's API key** (narrow card, `--surface`, 1px `--line`) · `$29 a month` · `$14.50 with Topstep's code` · `Bought from Topstep, by Topstep's published pricing. It never reaches our server. All-in, the Referee plus the key is $33.50 to $48 a month. We are asking Topstep to waive it for Referee users; nothing is promised until it is in writing.`
+**What you need** (narrow card, `--surface`, 1px `--line`; eyebrow `What you need`) · `Alpaca` · `paper or live, with your own API keys` · `An Alpaca account and its API keys, which stay on your computer; we never see them. A computer that is on while you trade: macOS, Windows or Linux. For a partner, a Discord or Telegram channel.`
 
 `.pricing-notes`:
-- **Per Combine, not forever.** `Cancel when your Combine ends. Come back on the next one and your rulebook, breach history and partner are where you left them.`
+- **Cancel anytime.** `One click. Your rules, breach history and partner settings stay on your computer for when you come back.`
 - **Not for sale today.** `The pilot runs first, at this price, with the money-back. If its breaches-per-trader-week number does not hold, the Referee does not launch at this price, and this page says so.`
 
 Footnote: `One plan. No credits. No auto-charging trial.`
@@ -410,8 +411,8 @@ Footnote: `One plan. No credits. No auto-charging trial.`
 - Privacy wire (`Your CSV → This browser tab (engine runs here) → Your report`, `Servers` off, badge `0 requests when you drop a file`), checklist and fine print: verbatim.
 - `#method-data`, eyebrow `What leaves your machine, and what never does`:
   - **The free analyzer** · `Nothing. The file is read in this tab. There is no upload button because there is nothing to upload to.`
-  - **The Referee's local agent** · `Sends your declarations, breach events and an "agent on / agent off" heartbeat to our server, so your partner can be told and your history kept. It never sends your API key, which stays in your operating system's keychain, and it never sends your order stream.`
-  - **Our server** · `Holds your rulebook, breach log and partner pushes, and nothing from the analyzer. Encrypted at rest and in transit, two-factor sign-in, export and deletion on request, and we tell you if we are breached. We treat the company as a financial institution under the Gramm-Leach-Bliley Act from the first byte we store.`
+  - **The Referee** · `Runs on your computer and keeps your Alpaca keys, rules, fills and breach log there. It talks to Alpaca and, if you set one, posts breaches to your partner's Discord or Telegram webhook. Nothing goes to us.`
+  - **Us** · `No server of ours holds your rules or your trades; the Referee does not need one. This site is static. All we ever receive is your email, your platform and whether you have a partner in mind, if you join the waitlist.`
 - Footnote: `There is no upload button because there is nothing to upload to.`
 
 ### 2.14 Export how-to `#export` (verbatim from build-2)
@@ -422,24 +423,24 @@ Kept exactly: eyebrow, h2 `Your export takes about a minute.`, tabs, menu path, 
 
 *Purpose:* what ships when, without a promise beyond the pilot. *Conversion role:* conversion 2 with the honest date. *Layout:* the five-column timeline (build-2's `.milestones` grid is already `repeat(5, 1fr)`; stacked rail at ≤ 899); `.roadmap-foot` holds only `.roadmap-cta`, centred.
 
-- Eyebrow `Rungs` · h2 `From analyzer to pilot.` · lede `The free analyzer and the rulebook are step one. The Referee's live rung is TopstepX. Everyone else gets the floor: declaration, reconciliation and the partner, nudge-only.`
-- `Now` · **Free analyzer and rulebook** · `Drop an export, see your record, draft three rules, keep one by hand, score your own rules-kept days privately.`
-- `To December 2026` · **The agent, in dry-run** · `A local agent on your machine reads the ProjectX feed and logs what it would have flattened, without flattening. Declare-and-reconcile for everyone else. The legal memo lands before anyone pays.`
-- `Late December 2026` · **Topstep Combine pilot** · `50 Combine traders, 60 days, the real price with the 14-day money-back, alternating dry-run and enforced weeks. Measured in breaches per trader-week.`
-- `Late December 2026` · **Declare-and-reconcile pilot** · `25 Apex or Tradovate-evaluation traders: hotkey declaration, one-tap "stopped out", overnight reconciliation from your export, the partner. Nudge-only, and labelled so.`
-- `Later` · **MetaApi and cTrader** · `Read-only feeds as a nudge tier, after the pilot and after 300 paying traders, not before.`
+- Eyebrow `Rungs` · h2 `From analyzer to pilot.` · lede `The free analyzer and the rulebook are step one. The Referee's first rung is Alpaca, paper accounts first. Other brokers wait for the pilot's number.`
+- `Now` · **Free analyzer and rulebook** · `Drop an export, see your record, and get three draft rules written from it.`
+- `To December 2026` · **The Referee, in dry run** · `The app on your computer watches an Alpaca paper account and logs what it would have closed, without closing anything. The legal memo lands before anyone pays.`
+- `Late December 2026` · **Alpaca pilot** · `Alpaca traders, paper accounts first, the real price with the 14-day money-back, alternating dry-run and enforced weeks. Measured in breaches per trader-week.`
+- `After paper weeks` · **Live Alpaca accounts** · `Flattening on live accounts, once paper weeks show the Referee closes the right trades and nothing else.`
+- `Later` · **Other brokers, and your score** · `After the pilot: other brokers, only where a broker's API lets an app read your fills and close a position; and a private rules-kept score with a shareable Record Card.`
 - CTA `Join the waitlist` · small `Pilot traders pay the real price, with the 14-day money-back.` · footnote `No launch date beyond the pilot is promised. You'll hear from us when there is something to try.`
 
 ### 2.16 Waitlist band `#signup` (re-purposes: band, pilot landing; copy rewritten; two fields and the invite added)
 
 *Purpose:* the ask. *Conversion role:* conversion 2, and conversion 3 without collecting anyone else's address. *Layout:* as build-2 (1.2fr/1fr; one column ≤ 899); the form gains a select and a checkbox under the email; the invite block replaces the form after success.
 
-- h2 `Hold your rules on the Topstep pilot.`
-- p: `Late December 2026: 50 Topstep Combine traders, 60 days, alternating dry-run and enforced weeks, at the real price with the 14-day money-back. Everyone else on the list gets declare-and-reconcile and the partner seat, nudge-only, when it ships. The Referee is designed to reduce daily-loss breaches and resets; the pilot measures breaches per trader-week, and we publish the number either way.`
+- h2 `Hold your rules on the Alpaca pilot.`
+- p: `Late December 2026: Alpaca traders, paper accounts first, alternating dry-run and enforced weeks, at the real price with the 14-day money-back. On another broker? The analyzer works with your export today, and you will hear if the Referee comes to yours. The Referee is designed to reduce rule breaches; the pilot measures breaches per trader-week, and we publish the number either way.`
 - `#signup-context` (mono 12px `--accent`, hidden until the `enforce` action): `Joining with 3 draft rules. They stay in this tab; we get your email.`
-- Form `#signup-form`: label (sr) `Email address`, input `#signup-email` `name="email"` placeholder `you@example.com`; label `Where do you trade?` select `#signup-platform` `name="tag"` with options `TopstepX` (`platform-topstepx`) · `Tradovate evaluation` (`platform-tradovate`) · `Apex` (`platform-apex`) · `Rithmic` (`platform-rithmic`) · `cTrader` (`platform-ctrader`) · `MetaTrader` (`platform-metatrader`) · `Other` (`platform-other`), first option `Where do you trade? (optional)` with an empty value; checkbox `#signup-partner` `name="tag" value="partner-in-mind"` label `I have a partner in mind`; button `#signup-btn` `Join the Referee waitlist` (with `#wl-pilot` inside, as today).
+- Form `#signup-form`: label (sr) `Email address`, input `#signup-email` `name="email"` placeholder `you@example.com`; label `Where do you trade?` select `#signup-platform` `name="tag"` with options `Alpaca` (`platform-alpaca`) · `Interactive Brokers` (`platform-ibkr`) · `Schwab / thinkorswim` (`platform-schwab`) · `Webull` (`platform-webull`) · `TradeStation` (`platform-tradestation`) · `Robinhood` (`platform-robinhood`) · `Other` (`platform-other`), first option `Where do you trade? (optional)` with an empty value; checkbox `#signup-partner` `name="tag" value="partner-in-mind"` label `I have a partner in mind`; button `#signup-btn` `Join the Referee waitlist` (with `#wl-pilot` inside, as today).
 - Small print: `We get your email, your platform and whether you have a partner in mind. Never your trades, never your rules, never anyone else's address. Unsubscribe anytime.` chip `trades sent: 0 bytes`.
-- Success (`signup.ts`): message `You're on the list. Check your inbox to confirm your email.`, then the form is replaced by `#signup-invite`: head `Invite your partner` · p `One read-only seat is free and gets your breach pushes. Send this yourself; we don't take their address.` · a read-only `textarea` with `I'm joining the Referee pilot on MyTradePilot. If I break one of my own trading rules, you'd get the push, nothing else. Here's the page: https://cezaraster.github.io/mytradepilot/#partner` · buttons `Copy the invite` (clipboard, label becomes `Copied` for 1.6 s) · `Open in email` (`mailto:?subject=Be%20my%20Referee%20partner&body=<the same text, URL-encoded>`).
+- Success (`signup.ts`): message `You're on the list. Check your inbox to confirm your email.`, then the form is replaced by `#signup-invite`: head `Invite your partner` · p `They get your breach posts in a Discord or Telegram channel, nothing else. Send this yourself; we don't take their address.` · a read-only `textarea` with `I'm joining the Referee pilot on MyTradePilot. If I break one of my own trading rules, you'd get the push, nothing else. Here's the page: https://cezaraster.github.io/mytradepilot/#partner` · buttons `Copy the invite` (clipboard, label becomes `Copied` for 1.6 s) · `Open in email` (`mailto:?subject=Be%20my%20Referee%20partner&body=<the same text, URL-encoded>`).
 - `signup.ts` change: post `new FormData(form)` (so the repeated `tag` fields travel with the email) instead of a hand-built body; the plain-form fallback already posts every field. The no-cors post means the response is unreadable, as today. Verify Buttondown's embed-subscribe endpoint accepts repeated `tag` fields; if it does not, rename the fields `metadata__platform` and `metadata__partner` (open question 4).
 - `nav.ts` `secondSignup`: unchanged, plus the invite block is shown only on the band (the mini form just shows "You're on the list.").
 
@@ -447,24 +448,24 @@ Kept exactly: eyebrow, h2 `Your export takes about a minute.`, tabs, menu path, 
 
 Eyebrow `FAQ` · h2 `Questions, answered straight.`
 
-1. **Topstep's lockout is free. What is the $19 for?** `Keep the lockout; it is the only control nobody can bypass. The $19 buys the hour before you would reach for it: a declaration you confirm while calm, a panel that is red the moment a trade closes against your next-trade rule, a flatten about two seconds after a fill against that rule, a deep link that writes Topstep's own lockout before tilt does its work, a partner who sees the breach, and a breach history that makes next week's declaration honest.`
-2. **The flatten happens after the fill. So what does it change?** `The fill stands; the position does not. About two seconds after a fill that breaks a declared rule, a reduce-only close lands, the breach is logged and your partner is told. The flattened fill paid commission and counts in Topstep's statistics. What is before the click is the declaration and the red panel.`
-3. **It runs on my machine. Can't I just close it?** `Yes. Closing the agent, revoking the key, or opening TopstepX on another device stops the Referee holding your rules. We record that as a bypass, the panel shows Off, and your partner is told. Bypass rate is a pilot metric; if it is common, the Referee becomes the declaration and the partner at a lower price, and we will say so.`
+1. **What is the $19 for?** `Your broker takes any order your account allows; it doesn't know your rules. The $19 buys the hour after a loss, held by something other than willpower: a declaration you confirm while calm, a panel that is red the moment a trade closes against your next-trade rule, a close seconds after a fill against that rule, a lock for the rest of the day when you reach your limit, a partner who sees the breach, and a breach history that makes next week's declaration honest.`
+2. **The flatten happens after the fill. So what does it change?** `The fill stands; the position does not. Seconds after a fill that breaks a declared rule, the Referee cancels the symbol's open orders and closes the position, the breach is logged and your partner is told. The fill stays on your record. What is before the click is the declaration and the red panel.`
+3. **It runs on my machine. Can't I just close it?** `Yes. Closing it, letting the computer sleep, or pressing the kill switch stops the Referee holding your rules, and nothing stops you doing that. When it starts again it reads the fills it missed today, and still closes a trade that broke a rule if that trade is open. A close that was under way when it stopped is not retried, so check your positions after a restart. How often people switch it off is a pilot metric; if it is common, the Referee becomes the declaration and the partner at a lower price, and we will say so.`
 4. **What if the flattened trade would have won?** `It gets flattened anyway. On the sample's record, the re-entry six minutes after a losing exit on Wed Mar 11 closed green. The rule was the trader's; the Referee never predicts a trade. Your record shows what the pattern does on average, and one trade does not change that. The panel shows which rule you were inside, and the rule is yours to change tomorrow, while calm.`
 5. **Is this advice? Is the Referee telling me what to trade?** `No. It holds the sentence you wrote and the number you put in it. It never chooses a trade, a level or a size, and the analyzer never tells you to take or avoid a trade; it shows your record and lets you write the rule. It is an educational tool, not investment advice. Past results do not predict future results.`
-6. **Is it proven?** `No. The Referee is designed to reduce daily-loss breaches and resets. The Topstep pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet, and we will publish the number either way. The reason we think the minutes after a loss matter is other people's work, cited above with its caveats: Coval and Shumway's study of one exchange's professional traders, OneFunded's own figure for its own failed evaluations, and hoc-trade's own dataset. None of that is evidence the Referee works. The pilot is.`
-7. **What exactly can a rule say?** `Five kinds: max trades a day (written into TopstepX's own daily limit), a stop attached within 15 seconds and never widened, your declared size, a cooldown after N losses, and no entry within N minutes of a losing exit. Your words, your numbers. Other patterns the analyzer finds, like your shorts or your 2 pm entries, are shown but are not rules the Referee holds.`
+6. **Is it proven?** `No. The Referee is designed to reduce rule breaches, the daily-loss kind above all. The Alpaca pilot will measure breaches per trader-week, dry-run versus enforced, intent-to-treat. Nothing is proven yet, and we will publish the number either way. The reason we think the minutes after a loss matter is other people's work, cited above with its caveats: Coval and Shumway's study of one exchange's professional traders, OneFunded's own figure for its own failed evaluations, and hoc-trade's own dataset. None of that is evidence the Referee works. The pilot is.`
+7. **What exactly can a rule say?** `Max trades a day; no entry within N minutes of a losing exit; a cooldown after N losses; a stop attached within N seconds and never widened; a maximum position size, and your declared size; a daily loss limit, realized plus open, that closes everything and locks the rest of the day; entry hours; a maximum number of open positions; and a lock after N breaches in a day. For each one you choose: flatten, or only warn. Your words, your numbers. Other patterns the analyzer finds, like your shorts or your 2 pm entries, are shown but are not rules the Referee holds.`
 8. **What does "pre-trade" mean here?** `The declaration before the session and the next-trade state computed the moment the previous trade closes. The flatten is after the fill.`
-9. **Can it flatten the wrong trade?** `It can, which is why the first week is a dry run, there is a visible kill switch, any wrong flatten pauses the Referee on that account and credits the commission, and the gate for the pilot is under one wrong flatten per hundred trader-weeks. Reduce-only orders are to be confirmed with Topstep.`
-10. **What does the pilot measure, and what if it fails?** `Breaches per trader-week, dry-run weeks against enforced weeks for the same traders, counting everyone who started; also overrides, bypasses, wrong flattens, declaration-before-fill and undeclared trades. If breaches do not fall, the flatten ends and the product becomes the declaration plus the partner, or the analyzer stays free and nothing is sold. Either way this page says so.`
-11. **What happens when my Combine ends, or when I go Live Funded?** `Cancel in one click; your rulebook, breach history and partner stay for the next Combine. Topstep excludes Live Funded accounts from the API, so Live Funded traders move to declare-and-reconcile plus the partner, nudge-only, with TopstepX's own risk settings as the control.`
-12. **I'm not on Topstep. What do I get?** `Declare-and-reconcile: a hotkey declaration, a one-tap "stopped out", overnight reconciliation from your broker export, undeclared trades logged as undeclared. It nudges and it keeps your score; it cannot flatten. Tradovate's API excludes evaluation accounts and Apex prohibits automation, so that is the honest floor for them.`
-13. **What do you hold on your server?** `From the analyzer, nothing: it runs in your browser. From the Referee: your rulebook, breach log and partner pushes, encrypted, behind two-factor sign-in, exportable and deletable on request, with breach notification. Never your API key, which stays in your operating system's keychain, and never your order stream.`
-14. **I'm in the EU or the UK.** `At launch the flatten is geofenced to US accounts. EU users get declare-and-reconcile and partner pushes, which decide nothing automatically. No cohort comparisons outside the US.`
+9. **Can it flatten the wrong trade?** `It can, which is why it starts in dry run and flattens nothing until you switch it on, there is a visible kill switch, it can only ever reduce a position, every action it takes is in its log, and the gate for the pilot is under one wrong flatten per hundred trader-weeks.`
+10. **What does the pilot measure, and what if it fails?** `Breaches per trader-week, dry-run weeks against enforced weeks for the same traders, counting everyone who started; also time with the Referee switched off, wrong flattens, declaration-before-fill and undeclared trades. If breaches do not fall, the flatten ends and the product becomes the declaration plus the partner, or the analyzer stays free and nothing is sold. Either way this page says so.`
+11. **What happens when I cancel, or move from paper to live?** `Cancel in one click; your rules, breach history and partner settings stay on your computer. Moving from paper to live is a switch in the Referee's settings, and each account keeps its own history.`
+12. **I'm not on Alpaca. What do I get?** `Today, the free analyzer: drop your broker's fills export and you get your record and three draft rules to keep by hand. The Referee needs a broker whose API lets an app read your fills and close a position; Alpaca is first. Tell us your broker when you join the waitlist.`
+13. **Do you hold my data on a server?** `No. The analyzer runs in your browser. The Referee runs on your computer: your Alpaca keys, rulebook, fills and breach log stay there. It talks to Alpaca, and to your partner's Discord or Telegram webhook if you set one. If you join the waitlist, we hold your email.`
+14. **I'm in the EU or the UK.** `At launch, live flattening is for US accounts. Elsewhere the Referee runs in dry run: it declares, logs and posts to your partner, and decides nothing automatically. No cohort comparisons outside the US.`
 15. **Why does one draft rule have a number and the others don't?** `A draft cites a statistic only when the group is solid (15 trades or more) and its 95% interval excludes your average. On the sample, the 3rd-trade rule qualifies (26 trades, interval −1.53% to −0.10% against an average of +0.33%); the 10-minute rule does not (13 trades, an early signal), so it is your rule with no number; the stop rule never can, because a fills export cannot show whether a stop was attached. Rules without numbers bind from trade one.`
-16. **Is the sample real?** `No. The sample is a fictional share trader generated by a script in the repository (scripts/make-sample.py) with planted patterns. The Referee runs on TopstepX futures; the Apr 9 scenario applies the Referee's rules to the sample's record to show the mechanics, and says so where it appears. Every number from the sample is computed from that file by the engine, live, in this tab.`
+16. **Is the sample real?** `No. The sample is a fictional share trader generated by a script in the repository (scripts/make-sample.py) with planted patterns. The Apr 9 scenario applies the Referee's rules to the sample's record to show the mechanics, and says so where it appears. Every number from the sample is computed from that file by the engine, live, in this tab.`
 17. **Do you see my trades?** `No. The file is read in your browser's memory and never sent anywhere. Open the Network tab in your browser's developer tools, drop a file, and watch nothing go out. The only things this site ever sends are your email address, your platform and whether you have a partner in mind, if you join the waitlist.`
-18. **Is the analyzer really free?** `Yes. It runs on your computer, so it costs nothing to run and stays free, with rule drafting, one manual rule, a private rules-kept score and the Record Card. The Referee is $19 a month or $169 a year, and is not for sale until the pilot has run.`
+18. **Is the analyzer really free?** `Yes. It runs on your computer, so it costs nothing to run and stays free: your record, and three draft rules written from it. The Referee is $19 a month or $169 a year, and is not for sale until the pilot has run.`
 19. **Can I check the math?** `Yes. The engine lives in src/core with tests in test/, and the command-line tool prints the same report and the same three drafts: npm run report -- --tz America/New_York your-trades.csv.`
 
 ### 2.18 Final band `#final` (re-purposes: final band)
@@ -495,7 +496,7 @@ Right nav: `How it works` (#story) · `Rulebook` (#rulebook) · `Pricing` (#pric
 
 **Face A, the rule card (`#story-rule`):** tag `Your rule` (Inter 600 13px `--accent`, no dot) · sentence (Instrument Serif 20px white) bound `drafts.0.sentence` = `I stop after 2 trades a day.` · record line (14px `--text-2`) `Your record shows: <26> third trades, <42%> winners, <−0.81%> a trade. Solid.` (bound `group.tradeOfDay.3rd.n/.winRate/.avgReturn`) · `.amount` row (was `.verdict`): big mono `#story-counter` bound `group.tradeOfDay.3rd.totalPnl` format `money`, class `neg`, counts 0 → `−$2,346`; small `net on 3rd trades of the day`. No what-if, so no statement.
 
-**Face B, the held panel (`#story-held`):** head mono 12px `--muted` `Thu Apr 9 · the Referee on TopstepX · illustrative on the sample's record`; rows (`.held-row`, grid `64px 1fr`, 13.5px/1.35, 6px gaps, 1px `--line` dividers; 12.5px on phones):
+**Face B, the held panel (`#story-held`):** head mono 12px `--muted` `Thu Apr 9 · the Referee on Alpaca · illustrative on the sample's record`; rows (`.held-row`, grid `64px 1fr`, 13.5px/1.35, 6px gaps, 1px `--line` dividers; 12.5px on phones):
 
 | row | time cell (mono) | text | tone | data |
 |---|---|---|---|---|
@@ -503,8 +504,8 @@ Right nav: `How it works` (#story) · `Rulebook` (#rulebook) · `Pricing` (#pric
 | r2 | | `Your rule says: no entry before 11:22.` | accent text, 3px `--accent` left rule | S + rule (10 min added to the exit) |
 | r3 | `11:15:00` | `Filled ORBX short · 3 min after a losing exit · 3rd trade of the day` | `--neg` time, white text | S: `trade.2026-04-09.ORBX.11:15.entry`, `.gapMin`, `.tradeOfDay`; the `:00` is I |
 | r4 | `11:15:02` | `<span class="vdot accent" id="story-dot" data-pilot-anchor="story"></span> Reduce-only flatten · breach logged · partner told` | `--accent` time, the dot's `::before` an 8px `--accent` disc with `0 0 10px var(--glow)` | I (the mechanics), labelled in the head |
-| status | | `declared 2 of 3 · fills 3 · the flattened fill paid commission and counts in Topstep's statistics` | mono 11px `--muted`, wraps | I |
-| link | `→` | `Write TopstepX's irreversible lockout` | `--accent` | product |
+| status | | `declared 2 of 3 · fills 3 · the flattened fill stays on your record` | mono 11px `--muted`, wraps | I |
+| link | `→` | `Breach 1 today · 3 lock the rest of the day` | `--accent` | I (the breach count and the limit of 3; the lock is the product's) |
 
 Stamp (`.pf-stamp.breached`, `--neg-soft` / `--neg`): `Breached · no re-entry · 11:15:02`. No dollar amount anywhere on the panel (the record's −$293 on that trade is deliberately not shown, so nothing reads as a saving).
 
@@ -529,9 +530,9 @@ Stamp (`.pf-stamp.breached`, `--neg-soft` / `--neg`): `Breached · no re-entry �
 
 ### 4.1 A rule, and the draft logic (`src/core/drafts.ts`, NEW, pure, tested)
 
-**Fields per rule:** `kind` (`maxTrades | stopAttached | size | cooldown | noReentry`) · `sentence` (the trader's words, first person, ≤ 120 characters) · `params` (`{ maxTrades: n }` | `{ stopWithinSec: 15, neverWiden: true }` | `{ size: n }` | `{ losses: n, minutes: n }` | `{ minutes: n }`) · `heldBy` (`'TopstepX daily trade limit' | 'live flatten' | 'nudge'`) · `record` (`{ cited: true, n, winRate, avgReturn, totalPnl, ci: [lo, hi] }` or `{ cited: false, reason }`) · `status` (`draft → ratified → declared today`, product only).
+**Fields per rule:** `kind` (`maxTrades | stopAttached | size | cooldown | noReentry`) · `sentence` (the trader's words, first person, ≤ 120 characters) · `params` (`{ maxTrades: n }` | `{ stopWithinSec: 15, neverWiden: true }` | `{ size: n }` | `{ losses: n, minutes: n }` | `{ minutes: n }`) · `heldBy` (`'live flatten' | 'nudge'`) · `record` (`{ cited: true, n, winRate, avgReturn, totalPnl, ci: [lo, hi] }` or `{ cited: false, reason }`) · `status` (`draft → ratified → declared today`, product only).
 
-**Example sentences in the trader's voice** (used in the rulebook list, the declaration card, the bento): `I stop after 3 trades a day.` · `A stop is on within 15 seconds of every fill. I never widen it.` · `2 contracts. Not 3.` · `After 2 losses I stop for 20 minutes.` · `I don't enter within 10 minutes of a losing exit.`
+**Example sentences in the trader's voice** (used in the rulebook list, the declaration card, the bento): `I stop after 3 trades a day.` · `A stop is on within 15 seconds of every fill. I never widen it.` · `200 shares. Not 300.` · `After 2 losses I stop for 20 minutes.` · `I don't enter within 10 minutes of a losing exit.`
 
 **`draftRules(report, tagged): Draft[]`** (deterministic; three drafts; the typed sample output in 2.2 is the test's expectation):
 
@@ -548,28 +549,28 @@ The class is moved to `src/web/site/declaration.ts` (mounted for `#rulebook`), u
 
 **Face A, declared.** Head: `Declaration · Thu Apr 9 · 9:25 ET · illustrative`. Rows (`.pf-row`: tick · what · res):
 
-- `✓` · **Max 3 trades a day** · `→ TopstepX daily limit: 3`
+- `✓` · **Max 3 trades a day** · `the 4th is flattened`
 - `✓` · **Stop on within 15 s, never widened** · `live feed`
 - `✓` · **Size as declared** · `your number`
 - `✓` · **Cooldown 20 min after 2 losses** · `next-trade state`
 - `✓` · **No entry within 10 min of a losing exit** · `next-trade state`
 
-Stamp (`.pf-stamp.declared`): `Declared · 5 rules · 9:25:14 ET`. Foot: `Hotkey ⌥D · confirmed while calm · on: agent running, key in your keychain`.
+Stamp (`.pf-stamp.declared`): `Declared · 5 rules · 9:25:14 ET`. Foot: `Confirmed while calm, before the open · on: the Referee running on your computer`.
 
-No size number appears on this card: the sample trades shares and the Referee runs on futures, so a contract count here would be the one thing on the card the record could contradict.
+No size number appears on this card: size is the trader's own number ("your number"), and a share count typed here would be a size the page proposes.
 
 **Face B, the breach moment.** Head: `11:12 ET · HYDR short closes, a loss · illustrative on the sample's record`. A `.pf-say` paragraph (3px `--accent` left rule, 14px `--text`): `Your rule says: no entry before 11:22. Your record on re-entries inside 10 minutes of a loss: 13 trades, an early signal, too few to cite. This is your rule. If you fill now I will flatten it.` (bound: `group.afterPrev.< 10 min after a loss.n`). Rows (`.pf-rows.timed`, columns `64px 1fr auto`):
 
 - `11:15:00` · **Filled ORBX short** · `against: no re-entry`
 - `11:15:02` · **Reduce-only flatten · breach logged · Mia told** · `after the fill`
-- `·` · `declared 2 of 3 · fills 3` · `counts in Topstep's statistics`
-- `→` · **Write TopstepX's irreversible lockout** (accent) · `deep link`
+- `·` · `declared 2 of 3 · fills 3` · `stays on your record`
+- `→` · **Breach 1 today · 3 lock the rest of the day** (accent) · `your limit`
 
 Stamp (`.pf-stamp.breached`): `Breached · no re-entry · 11:15:02`. Foot: `Kill switch visible · dry-run week first`.
 
-Note under the slot (`.pf-note.small.muted`): `Times and the partner's name are illustrative; the two tags on the Apr 9 trade (3 minutes after a losing exit, 3rd trade of the day) are the engine's on the fictional sample, which trades shares. The Referee runs on TopstepX futures; the mechanics are the same.`
+Note under the slot (`.pf-note.small.muted`): `Times and the partner's name are illustrative; the two tags on the Apr 9 trade (3 minutes after a losing exit, 3rd trade of the day) are the engine's on the fictional sample, which trades shares, as the Referee does on Alpaca.`
 
-**The Off state (shown as a static strip under the note, `.state-off`):** a `--surface-3` band with a `--muted` dot and mono 12px text cycling nothing (static): `Referee off · agent closed` followed by the list `key expired, sign in to Topstep again · TopstepX open on another device · dry-run week: logging, not flattening · paused: wrong flatten, post-mortem pending · kill switch on`, and the line `The panel never looks on when it is off. Your partner is told.`
+**The Off state (shown as a static strip under the note, `.state-off`):** a `--surface-3` band with a `--muted` dot and mono 12px text cycling nothing (static): `Referee off · app closed or computer asleep` followed by the list `Alpaca keys rejected · stream reconnecting · dry run: logging, not flattening · kill switch on`, and the line `The panel never looks on when it is off.`
 
 ### 4.3 The private day card (`#day-card`, static, under the declaration slot; `--surface`, 1px `--line`, radius 14, `padding: 18px`)
 
@@ -579,13 +580,13 @@ Rules kept 4 of 5                                        (Instrument Serif 34px 
 ✓ Max 3 trades   ✓ Stop ≤ 15 s   ✓ Size   ✓ Cooldown     (pills: --pos ticks)
 ✗ No re-entry · breached 11:15:00 · flattened 11:15:02   (pill: --neg cross)
 Declared before the fill: 2 of 3 fills                   (mono 12px --text-2)
-One breach cost you $2 in commission, plus two seconds of price.   (15px --text)
+One breach cost you the spread on two fills, plus a few seconds of price.   (15px --text)
 [.cftc-441, full text, 13px --text-2]
 The replay says nothing about what that day would have made. The pilot measures breaches per trader-week, not P&L.   (14px --text-2)
 No share button.                                         (mono 11px uppercase --muted)
 ```
 
-Caption under the card (`.small.muted`): `The $2 is the sample's commission on the two fills; the two seconds of price no export can show. Private by design: the shareable thing is the Record Card, one stat, with the statement baked in.`
+Caption under the card (`.small.muted`): `The spread and the seconds of price are what no export can show. Private by design. The day card and the Record Card are planned, not built yet.`
 
 ### 4.4 The Record Card mock (bento tile 6)
 
@@ -600,17 +601,17 @@ The full pricing copy is 2.11 and the full limits copy is 2.10; this table is fo
 | Figure | Where | Status (strategy source) |
 |---|---|---|
 | Referee $19 a month · $169 a year ($14.08 a month) | pricing, FAQ 18 | strategy section 4, an assumption, published as the price being tested |
-| One plan · no AI credits · no auto-charging trial · 14-day money-back · one-click cancel · per-Combine with reactivation | pricing | strategy section 4 |
-| Topstep key $29 a month · $14.50 with code · all-in $33.50 to $48 | pricing, limits 4 | Topstep's published pricing via the strategy; waiver "nothing promised" |
+| One plan · no AI credits · no auto-charging trial · 14-day money-back · one-click cancel · rules and history stay on your computer | pricing, FAQ 11 | strategy section 4 |
+| What you need: an Alpaca account (paper or live) and its API keys · a computer on while you trade (macOS, Windows or Linux) · a Discord or Telegram channel for a partner | pricing, limits 4 | the Referee app's requirements (README); no third-party price on the page |
 | Free tier contents | pricing, FAQ 18 | strategy section 4 |
-| Pilot: late December 2026 · 50 Combine traders · 60 days · ABAB dry-run/enforced · 25 on declare-and-reconcile · breaches per trader-week · intent-to-treat | band, roadmap, limits 5, FAQ 6/10 | strategy section 9 |
-| Wrong-flatten gate under 1 per 100 trader-weeks · dry-run week · kill switch · auto-pause · commission credit | limits 7, FAQ 9 | strategy section 8 |
-| "Two seconds" | hero lede, story, bento 3, limits 6 | always "about"; limits 6 states it is a design target |
-| MetaApi and cTrader "after 300 paying traders" | roadmap | strategy section 3 and 9 |
-| GLBA posture · encryption · MFA · breach notice · export and deletion | method data block, FAQ 13 | strategy section 8 (commitments, written before the first server-side byte) |
-| EU geofence · declare-and-reconcile and pushes "decide nothing automatically" · no cohort cards outside the US | limits 9, FAQ 14 | strategy section 8 |
-| Day card `$2` | rulebook | the sample's commission on two fills (S), labelled illustrative in the card head |
-| `Rules kept 4 of 5`, `declared 2 of 3`, `9:25:14`, `11:15:00/:02`, `Mia`, `Sam`, `23 of 25` | rulebook, story, partner, bento 6 | illustrative, labelled in the same component |
+| Pilot: late December 2026 · Alpaca traders, paper accounts first · ABAB dry-run/enforced · breaches per trader-week · intent-to-treat · live accounts after paper weeks | band, roadmap, limits 5, FAQ 6/10 | strategy section 9's design, retargeted to Alpaca; the page names no cohort size or length |
+| Wrong-flatten gate under 1 per 100 trader-weeks · dry run until switched on · kill switch · action log · post-mortem before enforcement goes back on | limits 7, FAQ 9 | strategy section 8 |
+| "Seconds" | hero lede, story, bento 3, limits 1 and 6, FAQ 1 and 2 | never a fixed number; limits 6 gives the cancel-confirm-close sequence and says the pilot publishes the real latency; the story's `11:15:00 → 11:15:02` is illustrative |
+| Other brokers "after the pilot, and only where a broker's API lets an app read your fills and close a position" | roadmap, limits 4, FAQ 12 | no date and no count promised |
+| No server of ours: keys, rules, fills and breach log stay on the trader's computer; the site receives only the waitlist email, platform and partner tag | method data block, limits 2, FAQ 13 and 17, pricing | the Referee app's architecture (README, docs/architecture.md) |
+| Live flattening for US accounts only at launch · elsewhere dry run that declares, logs, posts to the partner and "decides nothing automatically" · no cohort comparisons outside the US | limits 9, FAQ 14 | strategy section 8 |
+| Day card cost line: "the spread on two fills, plus a few seconds of price" | rulebook | no figure; labelled illustrative in the card head |
+| `Rules kept 4 of 5`, `declared 2 of 3`, `9:25:14`, `11:15:00/:02`, `Breach 1 today · 3 lock the rest of the day`, `Mia`, `Sam`, `3 rule breaches today, and the limit is 3`, `23 of 25` | rulebook, story, partner, bento 6 | illustrative, labelled in the same component |
 
 Comparative price claims: none. The panel winner's "costs less than a journal" is removed; no journal is named on the page.
 
@@ -624,16 +625,16 @@ Comparative price claims: none. The panel winner's "costs less than a journal" i
 | Never "skip this trade" | engine leak sentence, FAQ 5, main.ts | `format.ts` rewritten to "Without them, your total would have been…"; FAQ 5 says "never tells you to take or avoid a trade"; main.ts's "the stop check is skipped" becomes "left out". The phrasing test greps `skip this trade` and `skipping them`; the skip link is untouched. |
 | Never "verdict" | story head and card, stamps, shrink lab ids, preflight class | Story is "record → rule → held"; stamps are `Declared` / `Breached`; `.verdict` → `.amount`, `.pf-verdict` → `.pf-stamp`, `#shrink-verdict` → `#shrink-call`, `.verdict-line` → `.call-line`, `shrinkVerdict()` → `shrinkCall()`; the story timeline label `verdict` → `rule`. The grep over `index.html`, `src/web/**` and both stylesheets returns 0. |
 | Never "coach" or coach-like language | followup, roadmap, band | "tells you if a setup matches", "checks every setup against them", "AI review of your week", "live alerts", "journal" are gone. "The Referee's job is to hold them, not to have opinions about your trades." |
-| No instrument-specific stop or size lines | rulebook rows 2–3, declaration faces, drafts 3, limits 8 | The stop rule is "attached within 15 s, never widened"; size is "your number"; the declaration card shows "Size as declared" with no number; the page never computes a level or a contract count; the analyzer's "Your usual stop (%)" stays an input the trader types. Limits 8 and FAQ 5 state it. |
-| No pass-rate claims · no "saved you $X" · no "traders like you" | why, counters, story, day card, partner, limits 10 | Topstep's pass rate is deliberately omitted (2.6). The held panel shows no dollar amount; the day card's `$2` is the breach's own cost, and the line under it says the replay says nothing about what the day would have made. Limits 10 reads "no comparisons of you with other traders, of any kind"; the banned phrase itself is nowhere on the page. |
+| No instrument-specific stop or size lines | rulebook rows 2–3, declaration faces, drafts 3, limits 8 | The stop rule is "attached within 15 s, never widened"; size is "your number"; the declaration card shows "Size as declared" with no number; the rulebook's `"200 shares. Not 300."` is a quoted example of the trader's own sentence, not a size the page proposes; the page never computes a level or a share count; the analyzer's "Your usual stop (%)" stays an input the trader types. Limits 8 and FAQ 5 state it. |
+| No pass-rate claims · no "saved you $X" · no "traders like you" | why, counters, story, day card, partner, limits 10 | No firm's pass rate appears (2.6). The held panel shows no dollar amount; the day card's cost line names the breach's own cost (the spread on two fills, a few seconds of price) with no figure, and the line under it says the replay says nothing about what the day would have made. Limits 10 reads "no comparisons of you with other traders, of any kind"; the banned phrase itself is nowhere on the page. |
 | Every number is the trader's record or the labelled sample | all `data-sample` bindings, declaration, partner, bento 6 | Every record figure is engine-bound (the list in the preamble plus the new `ci.*`, `trade.*` and `drafts.*` paths); every invented element carries "illustrative" in its own head or caption (declaration faces, held panel head, push mock, day card, Record Card tile). Third-party figures appear only in `#why` and FAQ 6 with source and caveat. |
 | The 4.41 statement in immediate proximity to every what-if figure, prominently | report insights, report stop panel, day card | Section 0 lists every placement; the component is full text, 13px body colour, same container, directly beneath, never collapsed; `[data-whatif]` adjacency is tested. The story counter is a record figure (−$2,346), the leaks bento tile and the stop lab are gone, so no un-captioned what-if survives. The citation is correct: NFA 2-29(c) satisfying 4.41(b)(1)(ii), with the 4.41(b)(1)(i) text as the alternative. |
-| The flatten is post-fill and the marketing says so; "pre-trade" defined | hero lede, story 4 and footnote, rulebook callout, limits 1, FAQ 2, 8 | "flattened about two seconds after it lands" in the lede; "The flatten is after the fill" in the story step, the story footnote, the callout and FAQ 8; limits 1 is titled "It cannot stop your click"; "pre-trade" appears only inside its definition. |
-| Add-on to the platform's own lockouts, never a substitute | bento lede and footnote, limits 3, FAQ 1 | Verbatim phrase in three places; the Referee "escalates" and "deep-links" to Topstep's own lockout; TopstepX's controls are described accurately (irreversible lockouts plus Liquidate-and-Block), never as "a daily-loss limit that fires at the end". |
-| Enforcement stops when the agent is closed, the key is revoked, or TopstepX is opened elsewhere | limits 2, FAQ 3, states legend "Off", partner, bento 4 | Stated verbatim with the consequence (bypass recorded, panel shows Off, partner told) and the strategy's contingency; the Off state is a visible UI state, not only a paragraph. |
-| Discovery wording; pilot measures breaches per trader-week; nothing proven | limits 5, band, FAQ 6/10, roadmap, trust 3, footer | The exact sentence in limits 5 and the band; "Nothing is proven yet" in limits, FAQ, trust strip and footer; "we publish the number either way" in the band, limits and FAQ. |
-| Data: analyzer client-side; the server holds the rulebook, breach log and partner pushes; protection in plain words | trust 1, method data block, limits 2, FAQ 13, 17 | The three-column block names what leaves the machine, what the server holds, that the key never leaves the keychain, encryption, two-factor, export and deletion, breach notice, the GLBA stance. The waitlist small print names exactly what is sent. |
-| EU: flatten geofenced; EU users get declare-and-reconcile and partner pushes | limits 9, FAQ 14 | Stated; "decide nothing automatically" covers the Article 22 point in plain words; no cohort cards outside the US. |
+| The flatten is post-fill and the marketing says so; "pre-trade" defined | hero lede, story 4 and footnote, rulebook callout, limits 1, FAQ 2, 8 | "closed seconds after it lands" in the lede; "The flatten is after the fill" in the story step, the story footnote, the callout and FAQ 8; limits 1 is titled "It cannot stop your click"; "pre-trade" appears only inside its definition. |
+| The broker's role described accurately; the Referee never places a trade | bento lede and footnote, limits 3, FAQ 1 | "Alpaca takes what your account allows; it doesn't know the rules you wrote while calm." (bento lede) and "Your broker takes any order your account allows; it doesn't know your rules." (FAQ 1); the bento footnote "It holds your rules. It never opens a position."; limits 3 says it can only reduce and "is not a lock nobody can undo". The lock for the rest of the day is the Referee's own, and the page never presents it as the broker's. |
+| The Referee holds rules only while the app runs | limits 2, FAQ 3, states legend "Off", the `.state-off` strip | Stated with the consequence (closing the app, a sleeping computer or the kill switch stops it; on restart it catches up on the fills it missed and still closes an open trade that broke a rule) and the strategy's contingency (if people switch it off when it matters, the product becomes the declaration and the partner at a lower price); the Off state is a visible UI state, not only a paragraph. |
+| Discovery wording; pilot measures breaches per trader-week; nothing proven | limits 5, band, FAQ 6/10, roadmap, trust 3, footer | The pilot statement (section 0) verbatim in limits 5 and FAQ 6, its first clause in the band; "Nothing is proven yet" in limits, FAQ, trust strip and footer; "we publish the number either way" in the band, limits and FAQ. |
+| Data: analyzer client-side; the Referee keeps everything on the trader's computer; no server of ours | trust 1, method data block, limits 2, FAQ 13, 17 | The three-column block names what leaves the machine: from the analyzer nothing; the Referee talks only to Alpaca and, if set, the partner's webhook; we receive only the waitlist fields. Limits 2 says the Alpaca keys stay in a file only the user's account can read. The waitlist small print names exactly what is sent. |
+| Outside the US: live flattening for US accounts only; elsewhere dry run that declares, logs and posts to the partner | limits 9, FAQ 14 | Stated; "decides nothing automatically" covers the Article 22 point in plain words; no cohort comparisons outside the US. |
 | Honest about pilot status; not for sale today | eyebrow, trust 3, pricing, roadmap, band, footer | "Pilot late December 2026" in the eyebrow and lede; "In pilot, not for sale" above the fold; the pricing h2 and the "Not for sale today" row; the roadmap footnote; the footer line. |
 | Draft rules cite a statistic only when solid and the interval excludes the mean | drafts lede, cards 1–3, shrink lab rule 5, FAQ 15 | The rule is stated and demonstrated on the sample: one card cites, two say "your rule, no number" with the reason; the early-signal cell is never shown as a headline number. |
 | Third-party data no one else's address | band, partner | The site never collects a partner's email: the trader copies or mails the invite. The only PII sent is the visitor's email plus two tags. |
@@ -687,7 +688,7 @@ Comparative price claims: none. The panel winner's "costs less than a journal" i
 - **`src/web/signup.ts`**: `new FormData(form)`; success shows `#signup-invite` on the band.
 - **`src/web/site.css`**: new blocks for `#why`, `#rulebook` (list, states, callout, day card, off strip), `#partner`, `#limits`, `#pricing`, `#method-data`, `#legal`, the story's second face, clock, push chip and ring, six bento loops; the stop-lab block removed; renamed selectors.
 - **`index.html`**: every section per section 2.
-- **`test/site.test.ts`**: keep (a) tag counts and lanes, (b) every `data-sample` equals the engine, (c) shrink lab reference values (function renamed), (d) the band's action URL (plus the two new fields' `name` attributes), (e) the trades the copy uses (ORBX Apr 9 as today; add HYDR 2026-04-09 10:00 exits at 11:12 with pnl < 0; add ORBX 2026-03-11 11:29 with `prev === 'quick-after-loss'` and pnl > 0; drop the stop-lab assertion (f) and the LUMN pre-check trades). Add: `ci95` on the 3rd-trade cell equals `[-1.53, -0.10]` to two decimals and excludes the mean; the quick re-entry cell has `n === 13`; `draftRules` on the sample returns the three typed cards (sentence, tag, record, held) and the one not-rule line; `median trades per day === 3`; the phrasing grep over `index.html`, `src/web/**/*.ts` (comments included: rename the story and pilot comments too), `src/web/*.css`, `test/site.test.ts` and the rendered sample report (`render()` output) contains none of `verdict`, `skip this trade`, `skipping them`, `coach`, `pre-trade check`, `AI review`, `saved you`, `traders like you`, `pass rate`, `founding-member`, `early access`, each matched case-insensitively as a whole phrase with word boundaries (`/\bpass rate\b/i`, so "Bypass rate" in FAQ 3 and limits 2 does not trip it); every `[data-whatif]` in the rendered sample report and in `index.html` is immediately followed by a `.cftc-441`; the static `#legal` text equals `STATEMENT`; `index.html` contains the word "illustrative" inside `#declaration`, `#story-held`, `#day-card`, `#partner` and the bento's sixth tile.
+- **`test/site.test.ts`**: keep (a) tag counts and lanes, (b) every `data-sample` equals the engine, (c) shrink lab reference values (function renamed), (d) the band's action URL (plus the two new fields' `name` attributes), (e) the trades the copy uses (ORBX Apr 9 as today; add HYDR 2026-04-09 10:00 exits at 11:12 with pnl < 0; add ORBX 2026-03-11 11:29 with `prev === 'quick-after-loss'` and pnl > 0; drop the stop-lab assertion (f) and the LUMN pre-check trades). Add: `ci95` on the 3rd-trade cell equals `[-1.53, -0.10]` to two decimals and excludes the mean; the quick re-entry cell has `n === 13`; `draftRules` on the sample returns the three typed cards (sentence, tag, record, held) and the one not-rule line; `median trades per day === 3`; the phrasing grep over `index.html`, `src/web/**/*.ts` (comments included: rename the story and pilot comments too), `src/web/*.css`, `test/site.test.ts` and the rendered sample report (`render()` output) contains none of `verdict`, `skip this trade`, `skipping them`, `coach`, `pre-trade check`, `AI review`, `saved you`, `traders like you`, `pass rate`, `founding-member`, `early access`, each matched case-insensitively as a whole phrase with word boundaries (`/\bpass rate\b/i`, so a phrase such as "bypass rate" does not trip it); every `[data-whatif]` in the rendered sample report and in `index.html` is immediately followed by a `.cftc-441`; the static `#legal` text equals `STATEMENT`; `index.html` contains the word "illustrative" inside `#declaration`, `#story-held`, `#day-card`, `#partner` and the bento's sixth tile.
 
 ### 7.3 Effort (one engineer, on top of build 2)
 
@@ -710,14 +711,14 @@ Run at 1280×800, 1366×768, 1440×900 and 375×812 (phone layout), with motion 
 7. The trust strip's third item reads `In pilot, not for sale`.
 8. The counters count to 112 / 61% / +37.3% / −$2,346 (red, with the U+2212 sign), the fourth labelled `on 3rd trades of the day`; the slim link carries the "Rules found…" line.
 9. The pilot marker leaves the curve end, sits in the +37.3% counter, rides the frame head from 10% to 60% of the story span, lands on the flatten row's dot by 88% of the span, and flies to the band's button where it becomes the ◆; it is off while a report is on screen, on phones and under reduced motion (the ◆ shown).
-10. Story beat 1 types 14 CSV rows; beat 2 pops 112 chips (45/38/26/3 per lane) and grows bars `+0.94% / +0.44% / −0.81% / −0.29%`; beat 3 packs the lanes, dims lane 3 to .25 and slides in the rule card with `I stop after 2 trades a day.` and a counter counting 0 → −$2,346; beat 4 crossfades to the held panel with the clock `11:12 → 11:15:00 → 11:15:01 → 11:15:02`, rows r1–r4 in order, the red fill row and the blue flatten row, the ORBX chip ringed and bright in lane 3, the `Breached · no re-entry · 11:15:02` stamp, the push chip `Mia · breach · 11:15:02`, the status row and the lockout link; the card's height tweens without the frame jumping; all four state bars end on.
+10. Story beat 1 types 14 CSV rows; beat 2 pops 112 chips (45/38/26/3 per lane) and grows bars `+0.94% / +0.44% / −0.81% / −0.29%`; beat 3 packs the lanes, dims lane 3 to .25 and slides in the rule card with `I stop after 2 trades a day.` and a counter counting 0 → −$2,346; beat 4 crossfades to the held panel with the clock `11:12 → 11:15:00 → 11:15:01 → 11:15:02`, rows r1–r4 in order, the red fill row and the blue flatten row, the ORBX chip ringed and bright in lane 3, the `Breached · no re-entry · 11:15:02` stamp, the push chip `Mia · breach · 11:15:02`, the status row and the lock line; the card's height tweens without the frame jumping; all four state bars end on.
 11. The four story steps read section 2.5's strings; the active step is at full opacity, the others .32; the footnote reads `The flatten is after the fill. Nothing on this page says otherwise.`
-12. `#why` shows three cards with the big number, sentence, mono source line and caveat of 2.6, the line under the cards, and the footnote; Topstep's pass rate appears nowhere on the page.
+12. `#why` shows three cards with the big number, sentence, mono source line and caveat of 2.6, the line under the cards, and the footnote; no firm's pass rate appears anywhere on the page.
 13. `#rulebook` shows the five rows with the exact sentences, the two lines under the list, the convention line, the states legend with five states including Off, the callout, the CTA and the footnote `Draft said 2. You set 3. The rule is yours.`
 14. The declaration card ticks five rows and presses `Declared · 5 rules · 9:25:14 ET` within 1.5 s, flips at ~4 s to the breach face (the `.pf-say` paragraph, four timed rows, `Breached · no re-entry · 11:15:02`), returns at ~8.2 s, the slot height constant throughout; no size number appears on either face; the word "illustrative" is in both heads.
-15. The day card reads `Rules kept 4 of 5`, the five state pills, `Declared before the fill: 2 of 3 fills`, `One breach cost you $2 in commission, plus two seconds of price.`, the full statement at 13px, the "replay says nothing" line and `No share button.`
-16. The bento reads "What the $19 is for" with the six tiles of 2.8; each loop runs only while visible and stops when the tab is hidden; tile 3 says "About two seconds" and "The fill stands on your record"; tile 6's caption reads `Illustrative. The number is invented; the statement is not.`
-17. `#partner` shows the copy and the two illustrative pushes (breach, and "The Referee is off"); `#limits` shows the ten items in order with item 1 titled `It cannot stop your click.` and item 5 the pilot statement verbatim; `#pricing` shows Free, Referee ($19 / $169, the pilot chip, the money-back and cancel lines) and the Topstep key card with `$29 a month`, `$14.50 with Topstep's code` and the all-in range; no journal or competitor is named.
+15. The day card reads `Rules kept 4 of 5`, the five state pills, `Declared before the fill: 2 of 3 fills`, `One breach cost you the spread on two fills, plus a few seconds of price.`, the full statement at 13px, the "replay says nothing" line and `No share button.`
+16. The bento reads "What the $19 is for" with the six tiles of 2.8; each loop runs only while visible and stops when the tab is hidden; tile 3 says "Seconds after a fill against your rule." and "The fill stays on your record"; tile 6's caption reads `Illustrative. The number is invented; the statement is not.`
+17. `#partner` shows the copy and the two illustrative pushes (breach, and the lock for the rest of the day); `#limits` shows the ten items in order with item 1 titled `It cannot stop your click.` and item 5 the pilot statement verbatim; `#pricing` shows Free, Referee ($19 / $169, the pilot chip, the money-back and cancel lines) and the "What you need" card (`Alpaca`, `paper or live, with your own API keys`, and the note on keys, computer and partner channel); no journal or competitor is named.
 18. The shrink lab reproduces the seven reference values (spec 6.4) and its fifth rule; `#shrink-call` exists and `#shrink-verdict` does not.
 19. `#method` shows the privacy wire with its pulse, the checklist, the fine print and the three-column data block; `#export` is unchanged; `#roadmap` shows the five milestones of 2.15 and no card slot.
 20. The band's form has the email input, the platform select (seven options plus the empty first option) and the partner checkbox, both `name="tag"`; submitting posts every field; on success the form is replaced by the invite block whose Copy button copies the exact invite text and whose mail button opens a `mailto:` with it; the mini form shows "You're on the list." at the same moment.
@@ -756,11 +757,11 @@ Run at 1280×800, 1366×768, 1440×900 and 375×812 (phone layout), with motion 
 **Open questions (also returned with this document):**
 
 1. Counsel: confirm the statement text against the live eCFR 17 CFR 4.41(b) and NFA Compliance Rule 2-29(c) (unreachable from this sandbox), and choose between the NFA text (shipped by default) and the CFTC 4.41(b)(1)(i) text; both are constants in `legal.ts`.
-2. Counsel: the name "Referee" and the product-voice verbs (holds, binds, answers the fill) under Vartuli and Rule 4.14(a)(9); the page is built so the name can be struck without structural change.
-3. Product: the partner push content is breach-only (rule, time, no P&L) plus "Referee off" pushes; confirm before the partner section ships.
+2. Counsel: the name "Referee" and the product-voice verbs (holds, binds, answers the fill) under Vartuli and Rule 4.14(a)(9); the page is built so the name can be struck without structural change. Also the page's noun "enforcement" for the app's on/off setting (section 0, the note under the verb policy).
+3. Product: the partner webhook gets every breach and every flatten (the rule, the time, what the Referee did) and the lock for the rest of the day, as `#partner` says; the page no longer promises a "Referee off" post. Confirm against the app's webhook payload before the partner section ships.
 4. Engineering: whether Buttondown's embed-subscribe endpoint accepts repeated `tag` fields; otherwise use `metadata__platform` and `metadata__partner`.
 5. Engine: the `prev` tag counts an entry made while the previous same-day trade was still open (and later closed as a loss) as a "quick re-entry"; 3 of the sample's 13 are such overlaps. Decide whether rule drafting should require the previous exit to precede the entry; the page's copy mirrors the engine's label either way.
-6. Topstep: reduce-only order support and written confirmation that third parties may hold customer keys; limits 6 and 4 say "to be confirmed" and must change if either fails.
+6. Alpaca: the page states as fact that the close-position call can only reduce, that Alpaca will not close shares an open order still holds (so the Referee cancels first), and that a local app may hold the trader's own API keys; limits 3, 4 and 6 must change if any of these does not hold.
 7. Logo integration (favicon set, nav/footer logo, OG image, manifest) is a separate task and is not in this spec.
 8. Counsel: whether the shrink lab's "3 lucky trades at +4.00%" hypothetical chip, a statistics demonstration, needs a statement; the page treats it as not a performance presentation.
-9. Product: the day card's cost line uses the sample's $2 commission; confirm the product formula (commission on the flattened round trip plus the two seconds of price) so the string "One breach cost you $__." is computed the same way in the app.
+9. Product: the day card's cost line names the cost without a figure ("the spread on two fills, plus a few seconds of price"); if the app ever prints a dollar figure there, define the formula (the spread on the flattened round trip plus the seconds of price) first, so the site and the app compute it the same way.
