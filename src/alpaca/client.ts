@@ -47,11 +47,12 @@ export function retryAfterMs(headers: Headers, now = Date.now()): number | null 
   const ra = headers.get('retry-after')?.trim();
   if (ra) {
     if (/^\d+(\.\d+)?$/.test(ra)) return Math.round(Number(ra) * 1000);
-    const at = Date.parse(ra);
-    if (Number.isFinite(at)) return Math.max(0, at - now);
+    // Only a real HTTP-date ("Mon, 12 Oct 2026 15:00:05 GMT"): Date.parse also accepts "-1" or "5, 10" as dates.
+    const at = /^[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(ra) ? Date.parse(ra) : NaN;
+    if (Number.isFinite(at) && at > now) return at - now;
   }
   const reset = Number(headers.get('x-ratelimit-reset'));
-  if (headers.get('x-ratelimit-remaining') === '0' && Number.isFinite(reset) && reset > 0) return Math.max(0, reset * 1000 - now);
+  if (headers.get('x-ratelimit-remaining') === '0' && Number.isFinite(reset) && reset * 1000 > now) return reset * 1000 - now;
   return null;
 }
 
@@ -98,7 +99,8 @@ export class AlpacaClient {
         const retryable = res.status === 429 || res.status >= 500;
         if (retryable && idempotent && attempt < this.retries && (asked === null || asked <= this.maxRetryWaitMs)) {
           attempt++;
-          await this.sleep(asked ?? Math.min(8000, 500 * 2 ** attempt));
+          // At least the usual backoff: a clock running ahead of Alpaca's can make the asked wait 0.
+          await this.sleep(Math.max(asked ?? 0, Math.min(8000, 500 * 2 ** attempt)));
           continue;
         }
         throw new AlpacaError(res.status, text, undefined, asked);

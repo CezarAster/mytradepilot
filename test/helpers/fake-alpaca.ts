@@ -16,8 +16,11 @@ export class FakeAlpaca {
   failClose = 0;
   /** Symbols whose entry in a close-all answer fails. */
   failCloseAll: string[] = [];
-  /** Answer this method + path with 429 and this Retry-After, `times` times. */
-  rateLimit: { method: string; path: string; retryAfter: string; times: number } | null = null;
+  /**
+   * Answer this method + path with 429, `times` times, asking for a wait of `seconds`: with a Retry-After header, or
+   * the way Alpaca documents it, X-RateLimit-Remaining 0 and X-RateLimit-Reset in epoch seconds (style 'reset').
+   */
+  rateLimit: { method: string; path: string; seconds: number; times: number; style?: 'retry-after' | 'reset' } | null = null;
   /** While set, the fills endpoint answers only once it resolves (with the fills as they were when asked). */
   holdFills: Promise<void> | null = null;
   /** Bodies posted to /hook, the generic webhook. */
@@ -44,7 +47,11 @@ export class FakeAlpaca {
       const rl = this.rateLimit;
       if (rl && rl.times > 0 && rl.method === req.method && rl.path === url.pathname) {
         rl.times--;
-        res.writeHead(429, { 'content-type': 'application/json', 'retry-after': rl.retryAfter });
+        const headers: Record<string, string> =
+          rl.style === 'reset'
+            ? { 'x-ratelimit-limit': '200', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000 + rl.seconds)) }
+            : { 'retry-after': String(rl.seconds) };
+        res.writeHead(429, { 'content-type': 'application/json', ...headers });
         return res.end(JSON.stringify({ message: 'too many requests' }));
       }
       if (this.failNext === url.pathname) {
@@ -119,11 +126,13 @@ export class FakeAlpaca {
 // ---- a fake stream the test drives by hand ----
 export class FakeStream {
   static current: FakeStream | null = null;
+  static all: FakeStream[] = [];
   status: StreamStatus = 'stopped';
   handlers: StreamHandlers;
   constructor(handlers: StreamHandlers) {
     this.handlers = handlers;
     FakeStream.current = this;
+    FakeStream.all.push(this);
   }
   start(): void {
     this.status = 'live';

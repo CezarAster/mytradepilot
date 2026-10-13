@@ -313,3 +313,32 @@ test('fix: a position the referee is closing gets no second stopRequired breach'
   assert.deepEqual(e.positionsAwaitingStop(), ['AAA']);
   assert.deepEqual(breaches(e.tick(at('2026-03-02 09:42'))), ['stopRequired']);
 });
+
+test('fix 8 (review): seeding imports before or after replaying fills gives the same loss streak and cooldown', () => {
+  const csv = 'Symbol,Side,Qty,Price,Time\nIMP,Buy,10,10,2026-03-02 09:31\nIMP,Sell,10,11,2026-03-02 09:33\n'; // an imported win
+  const imported = parseFile(csv, { timeZone: NY, fileName: 'import.csv' }).trades;
+  const live = [
+    fill('LA', 'buy', 10, 20, '2026-03-02 10:00', 'la1'),
+    fill('LA', 'sell', 10, 19, '2026-03-02 10:05', 'la2'), // loss
+    fill('LB', 'buy', 10, 20, '2026-03-02 10:20', 'lb1'),
+    fill('LB', 'sell', 10, 19, '2026-03-02 10:25', 'lb2'), // loss
+  ];
+  const r = rules({ stopRequired: { enabled: false }, maxTradesPerDay: { count: 10 }, cooldownAfterLosses: { losses: 3, minutes: 20 }, noReentryAfterLoss: { enabled: false } });
+  const now = at('2026-03-02 10:30');
+  const seedFirst = new LiveEngine({ rules: r });
+  seedFirst.seed(imported, now);
+  for (const f of live) seedFirst.applyFill(f);
+  const seedAfter = new LiveEngine({ rules: r });
+  for (const f of live) seedAfter.applyFill(f);
+  seedAfter.seed(imported, now);
+  for (const e of [seedFirst, seedAfter]) {
+    const d = e.snapshot(now).day;
+    assert.equal(d.consecutiveLosses, 2);
+    assert.equal(d.lastLossExitAt, at('2026-03-02 10:25'));
+    assert.equal(d.tradesOpened, 3);
+    // A third loss arms the cooldown either way.
+    e.applyFill(fill('LC', 'buy', 10, 20, '2026-03-02 10:40'));
+    e.applyFill(fill('LC', 'sell', 10, 19, '2026-03-02 10:45'));
+    assert.deepEqual(breaches(e.applyFill(fill('LD', 'buy', 10, 20, '2026-03-02 10:50'))), ['cooldownAfterLosses']);
+  }
+});

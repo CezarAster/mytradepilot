@@ -42,6 +42,15 @@ async function makeReferee(opts: { dryRun?: boolean; enabled?: boolean } = {}) {
   return { referee, events, config };
 }
 
+/** Poll for an outcome instead of a fixed sleep, which a loaded CI machine can outlast. */
+async function waitFor(what: string, ok: () => boolean, ms = 3000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 before(async () => {
   fake = new FakeAlpaca();
   await fake.start();
@@ -87,7 +96,7 @@ test('startup backfills history from activities without enforcing, then a live b
   stream.push(fillUpdate('e2', 'DDD', 'buy', 10, 30));
   clock += 31000;
   await (referee as unknown as { onTick(): Promise<void> }).onTick();
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor('the flatten', () => referee.state().recentActions.some((a) => a.kind === 'flatten' && a.symbol === 'DDD'));
   st = referee.state();
   assert.deepEqual(st.todayBreaches.map((b) => b.rule), ['stopRequired']);
   assert.ok(fake.calls.includes('DELETE /v2/positions/DDD'), `flatten sent: ${fake.calls.filter((c) => c.startsWith('DELETE')).join(',')}`);
@@ -105,7 +114,7 @@ test('startup backfills history from activities without enforcing, then a live b
   clock += 60000;
   fake.positions = [{ symbol: 'EEE', qty: '1', side: 'long', avg_entry_price: '10', current_price: '10', market_value: '10', unrealized_pl: '0', unrealized_plpc: '0', cost_basis: '10' }];
   stream.push(fillUpdate('e3', 'EEE', 'buy', 1, 10));
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor('the flatten', () => referee.state().recentActions.some((a) => a.kind === 'flatten' && a.symbol === 'EEE'));
   assert.equal(fake.calls.filter((c) => c === 'DELETE /v2/positions/EEE').length, 1);
   assert.ok(referee.state().todayBreaches.some((b) => b.rule === 'maxTradesPerDay'));
 
@@ -157,7 +166,7 @@ test('dry run logs instead of sending, kill switch turns enforcement off, and th
   fake.calls = [];
   fake.positions = [{ symbol: 'FFF', qty: '2000', side: 'long', avg_entry_price: '10', current_price: '10', market_value: '20000', unrealized_pl: '0', unrealized_plpc: '0', cost_basis: '20000' }];
   FakeStream.current!.push(fillUpdate('big', 'FFF', 'buy', 2000, 10));
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor('the dry run', () => referee.state().recentActions.some((a) => a.kind === 'dry_run'));
   const st2 = (await get('/api/state')) as StateResponse;
   assert.deepEqual(st2.todayBreaches.map((b) => b.rule).sort(), ['maxPositionDollars', 'sizeMatchesDeclaration']);
   assert.equal(st2.todayTrades.length, 0);
@@ -272,7 +281,7 @@ test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed
   fake.failClose = 4; // every in-line attempt fails; the tick loop must take over
   fake.calls = [];
   stream.push({ ...fillUpdate('kp', 'KKK', 'buy', 300, 50), order: parent });
-  await settle();
+  await waitFor('the failed close', () => referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 5 s/.test(a.detail)));
   assert.ok(fake.calls.includes('DELETE /v2/orders/kstop') && fake.calls.includes('DELETE /v2/orders/ktp'), `legs cancelled: ${fake.calls.join(', ')}`);
   assert.equal(fake.positions.length, 1, 'still open after four failed closes');
   assert.ok(referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 5 s/.test(a.detail)));
@@ -288,7 +297,7 @@ test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed
   fake.positions = [position('KKK', 300, 50)];
   const before = fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length;
   stream.push(fillUpdate('k2', 'KKK', 'buy', 300, 50));
-  await settle();
+  await waitFor('the second close', () => fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length > before);
   assert.equal(fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length, before + 1, 'second trade flattened');
   assert.equal(fake.positions.length, 0);
   await referee.stop();

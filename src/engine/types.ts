@@ -201,7 +201,8 @@ export interface LiveSnapshot {
   now: number;
   day: DayState;
   positions: OpenPosition[];
-  lock: { until: number; reason: string } | null;
+  /** `since`: when it started, so a replay can tell which entries it covered. Missing in day state saved before 2026-10-13. */
+  lock: { until: number; reason: string; since?: number } | null;
   cooldownUntil: number | null;
   noReentryUntil: number | null;
   pendingDeclaration: Declaration | null;

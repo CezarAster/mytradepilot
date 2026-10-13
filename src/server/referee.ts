@@ -59,6 +59,8 @@ interface BreachRef {
 }
 
 interface FlattenRetry {
+  /** The account it was queued against; a retry never runs on another one. */
+  client: AlpacaClient;
   symbol: string;
   tradeKey: string | null;
   breach: BreachRef;
@@ -68,8 +70,18 @@ interface FlattenRetry {
 }
 
 const MAX_FLATTEN_ATTEMPTS = 8;
+
+/** What persistDayState saves: what a replay of fills cannot rebuild. */
+interface SavedDayState {
+  date: string;
+  lock: { until: number; reason: string; since?: number } | null;
+  breaches: number;
+  dailyLossBreached: boolean;
+}
 /** Longest in-line wait for a Retry-After on a close; longer ones go to the retry queue. */
 const MAX_INLINE_RETRY_WAIT = 5000;
+/** After a failed database write, skip writes this long (fills are kept in memory meanwhile). */
+const WRITE_PAUSE_MS = 10000;
 /** At most one drift-triggered sync this often. */
 const DRIFT_RESYNC_MS = 60000;
 
@@ -119,6 +131,9 @@ export class Referee {
   private unstored = new Map<string, Fill>();
   private lastWriteErrorAt = 0;
   private lastWriteNoticeAt = 0;
+  private writesPausedUntil = 0;
+  /** Alpaca asked us to back off until then: polling waits; enforcement keeps its own retries. */
+  private rateLimitedUntil = 0;
   private unsavedId = 0;
   private replaying = false;
   private pendingDeclId: number | null = null;
@@ -160,6 +175,7 @@ export class Referee {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.streamGen++;
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     this.stream?.stop();
@@ -168,33 +184,64 @@ export class Referee {
   }
 
   /**
-   * Replay stored history into a fresh engine. Nothing here notifies or enforces, except fills in `lateKeys`
-   * (just backfilled, today): their breaches are handled as seen late.
+   * Replay stored history into a fresh engine, in the order that rebuilds today as it was lived: earlier days, then
+   * today's imports and the saved lock, then today's fills. Nothing here notifies or enforces, except when `lateKeys`
+   * names fills just backfilled out of order: every breach the replay finds from the earliest of them on that is not
+   * already stored (theirs, or one they push onto a later fill, such as a trade count) is handled as seen late.
    */
   private rebuildEngine(lateKeys: Set<string> = new Set()): void {
     const cfg = this.config.get();
     const t0 = this.now();
+    const today = marketClock(new Date(t0)).date;
     const before = this.engine ? this.engine.snapshot(t0) : null;
     const pending = before?.pendingDeclaration ?? null;
-    const lockedBefore = before?.lock != null || this.savedLockActive();
+    const saved = this.savedDayState();
+    const savedToday = saved && saved.date === today ? saved : null;
+    const lockedBefore = before?.lock != null || (savedToday?.lock != null && savedToday.lock.until > t0);
     this.engine = new LiveEngine({ rules: cfg.rules, declarationWindowMinutes: cfg.declarationWindowMinutes, stopPct: cfg.stopPct });
     this.lateBreaches = [];
     this.flushUnstored();
     const fills = this.unstored.size ? [...this.store.allFills(), ...this.unstored.values()].sort((a, b) => a.time - b.time) : this.store.allFills();
+    const firstToday = fills.findIndex((f) => marketClock(new Date(f.time)).date === today);
+    const split = firstToday === -1 ? fills.length : firstToday;
+    const lateFrom = Math.min(...fills.filter((f) => lateKeys.has(f.key)).map((f) => f.time));
+    const candidates: Breach[] = [];
+    const imported = this.store.importedTrades();
     // Mid-replay the day state is incomplete: saving it, or announcing a lock, waits until it is restored below.
     this.replaying = true;
     try {
-      for (const f of fills) this.handleEvents(this.engine.applyFill(f), lateKeys.has(f.key) ? 'late' : 'history');
+      for (let i = 0; i < split; i++) this.handleEvents(this.engine.applyFill(fills[i]), 'history');
+      // Imports first: replaying fills rolls the engine through past days, which would wipe today's count.
+      if (imported.length) this.engine.seed(imported, t0);
+      this.engine.restoreLock(savedToday?.lock ?? null, t0);
+      for (let i = split; i < fills.length; i++) {
+        const f = fills[i];
+        const events = this.engine.applyFill(f);
+        if (lateKeys.has(f.key)) {
+          this.handleEvents(events, 'late');
+        } else {
+          this.handleEvents(events, 'history');
+          if (f.time >= lateFrom) for (const e of events) if (e.type === 'breach') candidates.push(e.breach);
+        }
+      }
     } finally {
       this.replaying = false;
     }
+    this.engine.recountStreak();
     this.lastAppliedFill = fills.length ? fills[fills.length - 1].time : 0;
-    // Imports after the replay: replaying fills rolls the engine through past days, which would wipe today's count.
-    const imported = this.store.importedTrades();
-    if (imported.length) this.engine.seed(imported, this.now());
     // Working orders as last seen, so a rebuilt position keeps its stop instead of looking naked to the next tick.
     for (const o of this.store.workingOrders([...WORKING])) this.handleEvents(this.engine.applyOrder(o), 'history');
-    this.restoreDayState(this.lateBreaches.length);
+    if (lateKeys.size) {
+      // Only breaches never seen before: the replay re-derives every one already stored.
+      const seen = new Set(this.todayStoredBreaches(t0).map((b) => `${b.rule}|${b.tradeKey}`));
+      this.lateBreaches = [...this.lateBreaches, ...candidates].filter((b) => {
+        const k = `${b.rule}|${b.tradeKey}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    this.restoreDayState(saved, this.lateBreaches.length);
     if (this.lateBreaches.length) {
       this.persistDayState();
       const lock = this.engine.snapshot(this.now()).lock;
@@ -205,24 +252,29 @@ export class Referee {
     this.log.info(`engine rebuilt: ${fills.length} fills, ${imported.length} imported trades, ${this.engine.closedTrades().length} closed trades (${this.now() - t0} ms)`);
   }
 
-  /** Locks and today's breach count survive a restart; fills alone cannot rebuild them. */
-  private restoreDayState(newBreaches = 0): void {
-    const raw = this.store.getKv('day_state');
+  private todayStoredBreaches(now: number): Breach[] {
+    const today = marketClock(new Date(now)).date;
     try {
-      this.engine.restore(raw ? JSON.parse(raw) : { date: '', lock: null, breaches: 0, dailyLossBreached: false }, this.now(), newBreaches);
+      return this.store.breachesSince(now - 36 * 3600000).filter((b) => marketClock(new Date(b.time)).date === today);
     } catch (err) {
-      this.log.warn('could not restore day state', err);
+      this.log.warn('could not read stored breaches', err);
+      return [];
     }
   }
 
-  private savedLockActive(): boolean {
+  private savedDayState(): SavedDayState | null {
     try {
       const raw = this.store.getKv('day_state');
-      const lock = raw ? (JSON.parse(raw) as { lock: { until: number } | null }).lock : null;
-      return lock !== null && lock.until > this.now();
-    } catch {
-      return false;
+      return raw ? (JSON.parse(raw) as SavedDayState) : null;
+    } catch (err) {
+      this.log.warn('could not read day state', err);
+      return null;
     }
+  }
+
+  /** Locks and today's breach count survive a restart; fills alone cannot rebuild them. */
+  private restoreDayState(saved: SavedDayState | null, newBreaches = 0): void {
+    if (saved) this.engine.restore(saved, this.now(), newBreaches);
   }
 
   private persistDayState(): void {
@@ -233,13 +285,17 @@ export class Referee {
 
   /**
    * A database write that must not stop enforcement when it fails (disk full, file locked, read-only folder).
-   * Logs at most once a minute and tells the trader at most once an hour. Returns null on failure.
+   * Logs at most once a minute and tells the trader at most once an hour. Returns null on failure. After a failure,
+   * writes are skipped for WRITE_PAUSE_MS: each one blocks the event loop until SQLite gives up, and a fill's flatten
+   * cannot go out until the writes before it return.
    */
   private safeWrite<T>(what: string, fn: () => T): T | null {
+    if (this.now() < this.writesPausedUntil) return null;
     try {
       return fn();
     } catch (err) {
       const now = this.now();
+      this.writesPausedUntil = now + WRITE_PAUSE_MS;
       if (now - this.lastWriteErrorAt >= 60000) {
         this.lastWriteErrorAt = now;
         this.log.error(`could not save ${what} to the database; enforcement carries on from memory`, err);
@@ -286,15 +342,18 @@ export class Referee {
   }
 
   private async connect(creds: AlpacaCredentials): Promise<void> {
+    // Claim the generation before waiting: a second connect (two quick Settings saves) or stop() supersedes this one.
+    const gen = ++this.streamGen;
+    const current = () => gen === this.streamGen && !this.stopped;
     this.stream?.stop();
+    this.stream = null;
     this.client = this.deps.clientFactory ? this.deps.clientFactory(creds) : new AlpacaClient(creds, { fetchImpl: this.deps.fetchImpl });
     try {
       await this.reconcile('startup');
     } catch (err) {
       this.log.error('initial sync failed; will keep retrying', err);
     }
-    const gen = ++this.streamGen;
-    const current = () => gen === this.streamGen && !this.stopped;
+    if (!current()) return;
     const handlers = {
       onUpdate: (u: AlpacaTradeUpdate) => {
         if (current()) this.onUpdate(u);
@@ -465,7 +524,7 @@ export class Referee {
     this.lastDrift = sig;
     if (sig && !inSync && this.now() - this.lastDriftSyncAt >= DRIFT_RESYNC_MS) {
       this.lastDriftSyncAt = this.now();
-      void this.reconcile('drift').catch((e) => this.log.warn('drift sync failed', e));
+      void this.reconcile('drift').catch((e) => (this.noteRateLimit(e), this.log.warn('drift sync failed', e)));
     }
   }
 
@@ -499,15 +558,23 @@ export class Referee {
     }
   }
 
+  /** Remember a rate limit Alpaca reported, so the polling below does not keep the window full. */
+  private noteRateLimit(err: unknown): void {
+    if (err instanceof AlpacaError && err.status === 429) this.rateLimitedUntil = Math.max(this.rateLimitedUntil, this.now() + Math.max(err.retryAfterMs ?? 0, 5000));
+  }
+
   private async tickOnce(): Promise<void> {
     const now = this.now();
     const client = this.client;
+    const limited = now < this.rateLimitedUntil;
     if (client) {
       // Ask Alpaca before any stop deadline can fire: a missed order event must never cost the trader a flatten.
       const engine = this.engine;
       const awaiting = new Set(engine.positionsAwaitingStop());
       for (const p of engine.openPositions()) {
         if (!awaiting.has(p.symbol) || p.stopDeadline === null || p.stopDeadline - now >= 12000) continue;
+        // Rate limited: we cannot confirm the stop, so its check waits, as it does when the request fails.
+        if (limited) return;
         try {
           const orders = await client.listOrders({ status: 'open', nested: true, symbols: p.symbol });
           if (this.client !== client || this.engine !== engine) return; // the account switched while we asked
@@ -518,6 +585,7 @@ export class Referee {
             }
           }
         } catch (err) {
+          this.noteRateLimit(err);
           this.log.warn(`could not check open orders for ${p.symbol}; its stop check waits for Alpaca`, err);
           return;
         }
@@ -528,19 +596,20 @@ export class Referee {
     await this.drainFlattenRetries();
     const open = this.engine.openPositions();
     const marksEvery = open.length ? 5000 : 30000;
-    if (now - this.lastMarksAt >= marksEvery) {
+    if (!limited && now - this.lastMarksAt >= marksEvery) {
       try {
         await this.refreshPositions(client, false);
       } catch (err) {
+        this.noteRateLimit(err);
         this.log.debug('positions refresh failed', err);
       }
     }
-    if (this.syncing) {
+    if (this.syncing || limited) {
       // one is running; it sets lastReconcileAt when done
     } else if (now - this.lastReconcileAt >= 120000 && this.streamStatus !== 'live') {
-      void this.reconcile('stream down').catch((e) => this.log.warn('periodic sync failed', e));
+      void this.reconcile('stream down').catch((e) => (this.noteRateLimit(e), this.log.warn('periodic sync failed', e)));
     } else if (now - this.lastReconcileAt >= 600000) {
-      void this.reconcile('periodic').catch((e) => this.log.warn('periodic sync failed', e));
+      void this.reconcile('periodic').catch((e) => (this.noteRateLimit(e), this.log.warn('periodic sync failed', e)));
     }
     if (now - this.lastClockAt >= 60000) {
       this.lastClockAt = now;
@@ -568,7 +637,8 @@ export class Referee {
   private handleEvent(e: EngineEvent, mode: Mode): void {
     switch (e.type) {
       case 'trade_opened':
-        this.safeWrite('trade details', () => this.store.setTradeMeta(e.position.tradeKey, mode === 'history' ? { tradeOfDay: e.position.tradeOfDay } : { tradeOfDay: e.position.tradeOfDay, declared: e.declared }));
+        if (mode !== 'history') this.safeWrite('trade details', () => this.store.setTradeMeta(e.position.tradeKey, { tradeOfDay: e.position.tradeOfDay, declared: e.declared }));
+        else if (!this.hasTradeMeta(e.position.tradeKey)) this.safeWrite('trade details', () => this.store.setTradeMeta(e.position.tradeKey, { tradeOfDay: e.position.tradeOfDay })); // keep the number recorded live
         if (e.declared && this.pendingDeclId !== null) {
           const declId = this.pendingDeclId;
           this.safeWrite('a declaration', () => this.store.consumeDeclaration(declId, e.position.tradeKey));
@@ -601,6 +671,14 @@ export class Referee {
         break;
       default:
         break;
+    }
+  }
+
+  private hasTradeMeta(key: string): boolean {
+    try {
+      return this.store.tradeMeta(key) !== null;
+    } catch {
+      return false;
     }
   }
 
@@ -655,7 +733,8 @@ export class Referee {
    * Close one symbol (or everything) at market through Alpaca's close-position endpoint, which can only reduce.
    * Debounced per trade, so duplicate breaches of one trade send one close while a new trade in the same symbol is
    * still enforced. A close that fails is retried from the tick loop with backoff (or after Alpaca's Retry-After),
-   * because the symbol's stop has already been cancelled by then.
+   * because the symbol's stop has already been cancelled by then. Retries only ever target the same trade on the same
+   * account, and stop when enforcement is turned off.
    */
   private async flatten(symbol: string | null, breach: BreachRef, rule: string, tradeKey: string | null = null, retry = false): Promise<string> {
     const client = this.client;
@@ -665,18 +744,20 @@ export class Referee {
     for (const [k, t] of this.lastFlatten) if (now - t > 60000) this.lastFlatten.delete(k);
     if (!retry && now - (this.lastFlatten.get(key) ?? 0) < 10000) return `Already closing ${symbol ?? 'everything'}.`;
     this.lastFlatten.set(key, now);
+    // Settings can switch the account while we wait on Alpaca: then nothing below may touch the new one.
+    const switched = () => this.client !== client;
+    const open = this.engine.openPositions();
     try {
       let detail: string;
       if (symbol === null) {
         // Mark first so an exit fill that arrives before the response is labelled; unmarked again below on failure.
-        const open = this.engine.openPositions();
         for (const p of open) this.engine.markRefereeClosed(p.symbol);
         const results = await client.closeAllPositions(true);
+        if (switched()) return 'The Alpaca account changed during the close.';
         const failed = results.filter((r) => !r.ok);
         for (const f of failed) {
           this.engine.markRefereeClosed(f.symbol, false);
-          const tk = open.find((p) => p.symbol === f.symbol)?.tradeKey ?? null;
-          if (!this.flattenRetries.has(f.symbol)) this.flattenRetries.set(f.symbol, { symbol: f.symbol, tradeKey: tk, breach, rule, attempts: 1, nextAt: this.now() + 5000 });
+          this.queueRetry(client, f.symbol, open.find((p) => p.symbol === f.symbol)?.tradeKey ?? null, breach, rule, 5000);
           const msg = `Close of ${f.symbol} failed during close-all (${f.status}: ${f.message}). Its open orders may already be cancelled, so it may have no stop. Retrying in 5 s.`;
           this.recordAction({ time: this.now(), kind: 'error', symbol: f.symbol, breachId: breach.id, detail: msg, ok: false });
           this.log.error(msg);
@@ -690,9 +771,15 @@ export class Referee {
       } else {
         this.engine.markRefereeClosed(symbol);
         const cancelled = await client.cancelOrdersFor(symbol);
+        if (switched()) return 'The Alpaca account changed during the close.';
         if (cancelled) this.recordAction({ time: this.now(), kind: 'cancel_orders', symbol, breachId: breach.id, detail: `Cancelled ${cancelled} open order(s) on ${symbol} before closing.`, ok: true });
-        const order = await this.closeWithRetry(client, symbol);
-        detail = order ? `Closed ${symbol} at market (${rule}${retry ? ', retry' : ''}); order ${order.id}.` : `${symbol} was already flat (${rule}).`;
+        const order = await this.closeWithRetry(client, symbol, tradeKey);
+        if (switched()) return 'The Alpaca account changed during the close.';
+        detail = order === 'gone'
+          ? `${symbol}: that trade closed before the close went out; nothing sent (${rule}).`
+          : order
+            ? `Closed ${symbol} at market (${rule}${retry ? ', retry' : ''}); order ${order.id}.`
+            : `${symbol} was already flat (${rule}).`;
         this.flattenRetries.delete(symbol);
         this.recordAction({ time: this.now(), kind: 'flatten', symbol, breachId: breach.id, detail, ok: true });
       }
@@ -700,17 +787,30 @@ export class Referee {
       return detail;
     } catch (err) {
       this.lastFlatten.delete(key);
+      if (switched()) return 'The Alpaca account changed during the close.';
+      // Never sooner than Alpaca asked us to wait.
+      const asked = err instanceof AlpacaError ? (err.retryAfterMs ?? 0) : 0;
       let msg = `Flatten of ${symbol ?? 'everything'} failed: ${(err as Error).message}`;
-      if (symbol !== null) {
+      if (symbol === null) {
+        // The close-all failed as a whole: retry each position on its own, and let the stop rule see them again meanwhile.
+        const wait = Math.min(120000, Math.max(5000, asked));
+        for (const p of open) {
+          this.engine.markRefereeClosed(p.symbol, false);
+          this.queueRetry(client, p.symbol, p.tradeKey, breach, rule, wait);
+        }
+        if (open.length) {
+          msg += ` Retrying ${open.map((p) => p.symbol).join(', ')} one by one in ${Math.round(wait / 1000)} s.`;
+          void this.notifier.send('Referee: could not close everything', msg);
+        }
+      } else {
         const attempts = (this.flattenRetries.get(symbol)?.attempts ?? 0) + 1;
         if (attempts <= MAX_FLATTEN_ATTEMPTS) {
-          // Never sooner than Alpaca asked us to wait.
-          const asked = err instanceof AlpacaError ? (err.retryAfterMs ?? 0) : 0;
           const wait = Math.min(120000, Math.max(Math.min(60000, 5000 * 2 ** (attempts - 1)), asked));
-          this.flattenRetries.set(symbol, { symbol, tradeKey, breach, rule, attempts, nextAt: this.now() + wait });
+          this.flattenRetries.set(symbol, { client, symbol, tradeKey, breach, rule, attempts, nextAt: this.now() + wait });
           msg += ` Its open orders may already be cancelled, so it may have no stop. Retrying in ${Math.round(wait / 1000)} s (attempt ${attempts} of ${MAX_FLATTEN_ATTEMPTS}).`;
         } else {
           this.flattenRetries.delete(symbol);
+          this.engine.markRefereeClosed(symbol, false); // no longer ours to close: the stop rule applies again
           msg += ` Gave up after ${MAX_FLATTEN_ATTEMPTS} attempts. Close ${symbol} yourself and check its stop.`;
         }
         void this.notifier.send(`Referee: could not close ${symbol}`, msg);
@@ -721,12 +821,23 @@ export class Referee {
     }
   }
 
+  private queueRetry(client: AlpacaClient, symbol: string, tradeKey: string | null, breach: BreachRef, rule: string, waitMs: number): void {
+    if (this.flattenRetries.has(symbol)) return;
+    this.flattenRetries.set(symbol, { client, symbol, tradeKey, breach, rule, attempts: 1, nextAt: this.now() + waitMs });
+  }
+
+  /** Is this trade (or, without a key, anything in the symbol) still open on the account we are talking to? */
+  private tradeOpen(client: AlpacaClient, symbol: string, tradeKey: string | null): boolean {
+    if (this.client !== client) return false;
+    return this.engine.openPositions().some((p) => p.symbol === symbol && (tradeKey === null || p.tradeKey === tradeKey));
+  }
+
   /**
    * Close at market, retrying the refusals that clear on their own: shares still held by a cancelling order (403),
-   * rate limit, 5xx, network. Bounded: three retries, each waiting Alpaca's Retry-After when it gives one, up to
-   * MAX_INLINE_RETRY_WAIT; a longer wait is left to the retry queue.
+   * rate limit, 5xx, network. Bounded: three retries, each waiting at least Alpaca's Retry-After, up to
+   * MAX_INLINE_RETRY_WAIT; a longer wait is left to the retry queue. Returns 'gone' when the trade closed meanwhile.
    */
-  private async closeWithRetry(client: AlpacaClient, symbol: string): Promise<AlpacaOrder | null> {
+  private async closeWithRetry(client: AlpacaClient, symbol: string, tradeKey: string | null): Promise<AlpacaOrder | null | 'gone'> {
     for (let attempt = 0; ; attempt++) {
       try {
         return await client.closePosition(symbol);
@@ -735,18 +846,24 @@ export class Referee {
         const transient = !(err instanceof AlpacaError) || err.status === 0 || err.status === 403 || err.status === 429 || err.status >= 500;
         const asked = err instanceof AlpacaError ? err.retryAfterMs : null;
         if (!transient || attempt >= 3 || (asked !== null && asked > MAX_INLINE_RETRY_WAIT)) throw err;
-        await this.sleep(asked ?? 500 * 2 ** attempt);
+        await this.sleep(Math.max(asked ?? 0, 500 * 2 ** attempt));
+        // While we waited the trade may have closed and a new one opened in the symbol: never close that one.
+        if (this.client !== client || (tradeKey !== null && !this.tradeOpen(client, symbol, tradeKey))) return 'gone';
       }
     }
   }
 
   private async drainFlattenRetries(): Promise<void> {
+    const enf = this.config.get().enforcement;
     for (const r of [...this.flattenRetries.values()]) {
-      if (r.nextAt > this.now()) continue;
-      if (!this.engine.openPositions().some((p) => p.symbol === r.symbol)) {
+      // The kill switch and dry run stop queued closes too; a manual flatten was asked for by the trader.
+      const stopped = r.rule !== 'manual' && (!enf.enabled || enf.dryRun);
+      if (stopped || !this.tradeOpen(r.client, r.symbol, r.tradeKey)) {
         this.flattenRetries.delete(r.symbol);
+        if (stopped) this.log.info(`${r.symbol}: queued close dropped, enforcement is ${enf.enabled ? 'in dry run' : 'off'}`);
         continue;
       }
+      if (r.nextAt > this.now()) continue;
       await this.flatten(r.symbol, r.breach, r.rule, r.tradeKey, true);
     }
   }
@@ -980,8 +1097,17 @@ export class Referee {
     this.notifier.configure({ webhookUrl: next.webhookUrl, desktop: next.notifications.desktop });
     const credsChanged = JSON.stringify(cfg.alpaca) !== JSON.stringify(next.alpaca);
     const modeChanged = (cfg.alpaca?.mode ?? 'paper') !== (next.alpaca?.mode ?? 'paper');
+    if (modeChanged || credsChanged) {
+      // Whatever was in flight belongs to the old account: never let it act on the new one.
+      if (this.flattenRetries.size) this.log.warn(`dropped ${this.flattenRetries.size} queued close retr${this.flattenRetries.size === 1 ? 'y' : 'ies'}: the Alpaca account changed`);
+      this.flattenRetries.clear();
+      this.lastFlatten.clear();
+      this.lateBreaches = [];
+    }
     if (modeChanged) {
-      // A different account: switch data files and rebuild.
+      // A different account: switch data files and rebuild. Fills the old database refused stay with it (the
+      // backfill finds them again when that account is used next).
+      this.unstored.clear();
       this.store.close();
       const file = this.deps.dbFile ? this.deps.dbFile(next.alpaca!.mode) : join(this.config.dir, `referee-${next.alpaca!.mode}.sqlite`);
       this.store = new Store(file);

@@ -87,6 +87,19 @@ Tests: `test/referee-sync.test.ts` and `test/alpaca.test.ts`. Each fails on the 
 10. `doReconcile` remembers the client, store and engine it started with, and stops if any change while it waits on Alpaca. `reconcile()` coalesces requests made during a run into one more run, and the promise it returns covers that run. A replaced stream's handlers are ignored.
 11. The client reads `Retry-After` (seconds or a date) and Alpaca's `X-RateLimit-Reset`. GETs wait it out up to 10 s, or fail at once with `AlpacaError.retryAfterMs`. A close waits it out in line up to 5 s; the retry queue never retries sooner than Alpaca asked.
 
+### The review of those fixes
+
+A second review ran five reviewers, each paired with a skeptic who tried to refute every finding. 21 findings survived, and all are fixed, each with a test in the same two files plus one in `test/engine-live.test.ts`:
+
+- **Account switches.** Changing keys or paper/live drops queued close retries and in-flight state. A close queued on paper can no longer close a live position. Fills the paper database refused are not written into the live one. Each retry remembers its account, and a flatten that sees the account change mid-way stops. Two quick Settings saves leave one stream, not two.
+- **The retry queue** only retries the same trade. If that trade closed and a new one opened in the symbol, the new one is left alone. The kill switch and dry run now also drop closes already queued, which used to run anyway.
+- **Close-all** (the daily loss limit) that Alpaca refuses as a whole is retried symbol by symbol, after `Retry-After`. The positions are no longer left marked as "being closed by the Referee", which used to hide them from the stop rule.
+- **Out-of-order rebuild** replays in this order: earlier days, today's imports, the saved lock (which now records when it started), then today's fills. Every breach found from the earliest missed fill on that isn't already stored is handled as seen late, including one the missed fill pushes onto a later fill (trade 3 of 2 becomes trade 4). The trade number recorded live is kept.
+- **The loss streak** is recounted in exit order after imports and replays, so seeding before or after replaying gives the same cooldowns.
+- **A locked database** no longer stalls the service. SQLite's busy timeout is 100 ms (it was 5 s). After a failed write, writes pause for 10 s and fills wait in memory.
+- **Rate limits.** A wait of 0 or a malformed header falls back to normal backoff. While Alpaca is rate-limiting us, the position and sync polling waits instead of asking every tick. The fake Alpaca can now answer the way Alpaca documents it (`X-RateLimit-Reset`).
+- **Tests** poll for outcomes instead of sleeping a fixed time; `test/referee.test.ts` got the same treatment. 12 copies in parallel on a loaded 4-core machine all pass.
+
 ## The original review findings (all fixed)
 
 Kept for reference.

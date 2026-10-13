@@ -35,7 +35,9 @@ The stream can miss a fill: the laptop slept, the service was down, or the socke
 - **Drift.** Every few seconds, Alpaca's positions are compared with the positions our fills add up to. A mismatch runs a sync, at most once a minute.
 - **Sync.** Every sync backfills fills from the activities endpoint. A backfilled fill dated today is handled "late": its breaches are stored, notified and enforced if the trade is still open, decided once the whole batch is applied. Older ones are history.
 
-A sync remembers the account, database and engine it started with, and starts over if settings switch any of them while it waits on Alpaca.
+A sync remembers the account, database and engine it started with, and starts over if settings switch any of them while it waits on Alpaca. Closes do the same: a queued close retry belongs to one account and one trade, and is dropped when the account changes, the trade closes, or enforcement is turned off.
+
+When a missed fill is older than fills already applied, the engine is rebuilt. The replay order is earlier days, today's imports, the saved lock, then today's fills. Any breach found from the missed fill onward that is not already stored is handled as seen late.
 
 ## What "pre-trade" means here
 

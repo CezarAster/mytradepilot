@@ -67,7 +67,7 @@ export class LiveEngine {
   private historyDirty = true;
   private record: RecordBook;
   private day: DayState;
-  private lock: { until: number; reason: string } | null = null;
+  private lock: { until: number; reason: string; since?: number } | null = null;
   private cooldownUntil: number | null = null;
   private noReentryUntil: number | null = null;
   private noReentrySymbol: string | null = null;
@@ -117,6 +117,34 @@ export class LiveEngine {
       this.day.tradesOpened++;
       this.countClosed(t);
     }
+    this.recountStreak();
+  }
+
+  /**
+   * The loss streak and "what came before" depend on the order trades closed in, and imports can arrive after live
+   * trades that closed later. Recount them from today's closed trades in exit order, so any order of seeding and
+   * replaying gives the same state.
+   */
+  recountStreak(): void {
+    const today = this.day.date;
+    const closed = this.history.filter((t) => t.exitTime && marketClock(t.exitTime).date === today).sort((a, b) => a.exitTime!.getTime() - b.exitTime!.getTime());
+    let streak = 0;
+    let lastLoss: number | null = null;
+    for (const t of closed) {
+      if (t.pnl > 0) streak = 0;
+      else {
+        streak++;
+        lastLoss = t.exitTime!.getTime();
+      }
+    }
+    this.day.consecutiveLosses = streak;
+    this.day.lastLossExitAt = lastLoss;
+    this.lastTodayTrade = closed.at(-1) ?? null;
+  }
+
+  /** Apply a saved lock before replaying the day it covers, so entries after its start are judged as locked. */
+  restoreLock(lock: { until: number; reason: string; since?: number } | null, now: number): void {
+    if (lock && lock.since !== undefined && lock.until > now) this.lock = { ...lock };
   }
 
   /** All closed trades, imports and live, sorted by entry time. */
@@ -175,7 +203,7 @@ export class LiveEngine {
     this.day.breaches++;
     const cap = this.rules.maxBreachesPerDay;
     if (cap.enabled && this.day.breaches >= cap.count && !this.lock) {
-      this.lock = { until: endOfMarketDay(time), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})` };
+      this.lock = { until: endOfMarketDay(time), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})`, since: time };
       events.push({ type: 'lock', until: this.lock.until, reason: this.lock.reason });
     }
   }
@@ -266,7 +294,7 @@ export class LiveEngine {
 
     const r = this.rules;
     const t = fill.time;
-    if (this.lock && t < this.lock.until) {
+    if (this.lock && t < this.lock.until && t >= (this.lock.since ?? -Infinity)) {
       this.breach(events, t, 'locked', fill.symbol, p.tradeKey, `You are locked out until ${fmtTime(this.lock.until)} ET (${this.lock.reason}). You entered ${fill.symbol} at ${fmtTime(t)}.`, 'flatten');
     }
     if (r.maxTradesPerDay.enabled && number > r.maxTradesPerDay.count) {
@@ -426,7 +454,7 @@ export class LiveEngine {
       this.day.dailyLossBreached = true;
       this.breach(events, now, 'dailyLossLimit', null, null, `Your rule: stop at ${money(-r.dollars)} for the day. You are at ${money(total)} (realized ${money(this.day.realizedPnl)}, open ${money(this.day.unrealizedPnl)}).`, r.action);
       if (r.lockRestOfDay && !this.lock) {
-        this.lock = { until: endOfMarketDay(now), reason: 'daily loss limit hit' };
+        this.lock = { until: endOfMarketDay(now), reason: 'daily loss limit hit', since: now };
         events.push({ type: 'lock', until: this.lock.until, reason: this.lock.reason });
       }
     }
@@ -461,7 +489,7 @@ export class LiveEngine {
     this.day.breaches = Math.max(this.day.breaches, state.breaches + newBreaches);
     const cap = this.rules.maxBreachesPerDay;
     if (newBreaches > 0 && cap.enabled && this.day.breaches >= cap.count && !this.lock) {
-      this.lock = { until: endOfMarketDay(now), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})` };
+      this.lock = { until: endOfMarketDay(now), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})`, since: now };
     }
     if (state.dailyLossBreached) {
       this.dailyLossBreached = true;

@@ -22,19 +22,35 @@ test('fix 11: Retry-After in seconds or as a date, and the rate-limit reset when
   assert.equal(retryAfterMs(new Headers()), null);
 });
 
+test('fix 11 (review): a malformed or past value says nothing, and does not hide a valid rate-limit reset', () => {
+  for (const bad of ['-1', '.5', '5, 10', 'soon']) assert.equal(retryAfterMs(new Headers({ 'retry-after': bad }), 4000), null, bad);
+  const date = 'Mon, 12 Oct 2026 15:00:05 GMT';
+  assert.equal(retryAfterMs(new Headers({ 'retry-after': date }), Date.parse(date) + 1000), null, 'a date in the past');
+  assert.equal(retryAfterMs(new Headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '3' }), 4000), null, 'a reset our clock has passed');
+  assert.equal(retryAfterMs(new Headers({ 'retry-after': '-1', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '34' }), 4000), 30000);
+});
+
 test('fix 11: a GET refused with 429 waits Retry-After and retries; a wait longer than the cap fails at once and says how long', async () => {
   const sleeps: number[] = [];
   const client = new AlpacaClient(CREDS, { tradingHost: `http://127.0.0.1:${fake.port}`, retries: 2, sleep: async (ms) => void sleeps.push(ms) });
-  fake.rateLimit = { method: 'GET', path: '/v2/account', retryAfter: '2', times: 1 };
+  fake.rateLimit = { method: 'GET', path: '/v2/account', seconds: 2, times: 1 };
   assert.equal((await client.getAccount()).id, 'acct-1');
   assert.deepEqual(sleeps, [2000]);
 
   sleeps.length = 0;
   fake.calls = [];
-  fake.rateLimit = { method: 'GET', path: '/v2/account', retryAfter: '30', times: 1 };
+  fake.rateLimit = { method: 'GET', path: '/v2/account', seconds: 30, times: 1 };
   await assert.rejects(client.getAccount(), (err: unknown) => err instanceof AlpacaError && err.status === 429 && err.retryAfterMs === 30000);
   assert.deepEqual(sleeps, [], 'no in-place wait');
   assert.equal(fake.calls.length, 1, 'no retry');
+});
+
+test('fix 11 (review): a 429 whose asked wait has already passed still backs off', async () => {
+  const sleeps: number[] = [];
+  const client = new AlpacaClient(CREDS, { tradingHost: `http://127.0.0.1:${fake.port}`, retries: 2, sleep: async (ms) => void sleeps.push(ms) });
+  fake.rateLimit = { method: 'GET', path: '/v2/account', seconds: -2, times: 2, style: 'reset' }; // our clock is ahead of Alpaca's
+  assert.equal((await client.getAccount()).id, 'acct-1');
+  assert.deepEqual(sleeps, [1000, 2000]);
 });
 
 /** A WebSocket stand-in that answers auth and listen like Alpaca, until told to go quiet. */
@@ -67,27 +83,31 @@ class FakeSocket {
   }
 }
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function waitFor(what: string, ok: () => boolean, ms = 5000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
 
 test('fix 6: the stream heartbeats while live, and reconnects when the socket goes quiet without closing', async () => {
   FakeSocket.all = [];
   const statuses: StreamStatus[] = [];
   let lives = 0;
-  const stream = new TradeStream(CREDS, { onUpdate: () => undefined, onStatus: (s) => void statuses.push(s), onLive: () => void lives++ }, { WebSocketImpl: FakeSocket as unknown as typeof WebSocket, heartbeatMs: 20, idleTimeoutMs: 70, minBackoffMs: 5, maxBackoffMs: 10 });
+  // An idle timeout far above the heartbeat, so a slow machine never drops a socket that is answering.
+  const stream = new TradeStream(CREDS, { onUpdate: () => undefined, onStatus: (s) => void statuses.push(s), onLive: () => void lives++ }, { WebSocketImpl: FakeSocket as unknown as typeof WebSocket, heartbeatMs: 20, idleTimeoutMs: 600, minBackoffMs: 5, maxBackoffMs: 10 });
   stream.start();
-  await wait(200);
+  await waitFor('live', () => stream.getStatus() === 'live');
   const first = FakeSocket.all[0];
-  assert.equal(stream.getStatus(), 'live');
-  assert.ok(first.sent.filter((m) => m.action === 'listen').length >= 4, 'heartbeat listens');
+  await waitFor('heartbeats', () => first.sent.filter((m) => m.action === 'listen').length >= 4);
   assert.equal(lives, 1, 'a heartbeat answer is not a reconnect');
   assert.equal(FakeSocket.all.length, 1, 'an answering socket is kept');
 
   first.quiet = true; // the connection dies silently: no close event, no messages
-  await wait(250);
+  await waitFor('a reconnect', () => FakeSocket.all.length >= 2 && stream.getStatus() === 'live');
   assert.ok(first.closed, 'the quiet socket is dropped');
-  assert.ok(FakeSocket.all.length >= 2, 'reconnected');
   assert.ok(statuses.includes('reconnecting'));
-  assert.equal(stream.getStatus(), 'live');
   assert.equal(lives, 2, 'the new connection syncs');
   stream.stop();
 });

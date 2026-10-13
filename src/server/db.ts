@@ -73,7 +73,9 @@ export class Store {
   readonly db: Database.Database;
 
   constructor(file: string) {
-    this.db = new Database(file);
+    // A short busy timeout: the default (5 s) blocks the whole service, enforcement included, while another program
+    // holds the file. The referee carries on from memory when a write fails.
+    this.db = new Database(file, { timeout: 100 });
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.exec(SCHEMA);
