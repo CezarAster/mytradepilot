@@ -25,6 +25,8 @@ export interface ClientOptions {
   tradingHost?: string;
   dataHost?: string;
   sleep?: (ms: number) => Promise<void>;
+  /** The longest Retry-After an idempotent request waits out in place; a longer one fails at once and says how long. */
+  maxRetryWaitMs?: number;
 }
 
 /** One symbol's outcome in a close-all. */
@@ -37,6 +39,22 @@ export interface CloseAllResult {
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * The wait a 429 (or 503) asks for: Retry-After in seconds or as an HTTP date, else Alpaca's X-RateLimit-Reset
+ * (epoch seconds) when the window is used up. Null when the response does not say.
+ */
+export function retryAfterMs(headers: Headers, now = Date.now()): number | null {
+  const ra = headers.get('retry-after')?.trim();
+  if (ra) {
+    if (/^\d+(\.\d+)?$/.test(ra)) return Math.round(Number(ra) * 1000);
+    const at = Date.parse(ra);
+    if (Number.isFinite(at)) return Math.max(0, at - now);
+  }
+  const reset = Number(headers.get('x-ratelimit-reset'));
+  if (headers.get('x-ratelimit-remaining') === '0' && Number.isFinite(reset) && reset > 0) return Math.max(0, reset * 1000 - now);
+  return null;
+}
+
 export class AlpacaClient {
   readonly creds: AlpacaCredentials;
   private readonly tradingHost: string;
@@ -45,6 +63,7 @@ export class AlpacaClient {
   private readonly retries: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly maxRetryWaitMs: number;
 
   constructor(creds: AlpacaCredentials, opts: ClientOptions = {}) {
     this.creds = creds;
@@ -54,6 +73,7 @@ export class AlpacaClient {
     this.retries = opts.retries ?? 3;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.sleep = opts.sleep ?? defaultSleep;
+    this.maxRetryWaitMs = opts.maxRetryWaitMs ?? 10000;
   }
 
   private headers(): Record<string, string> {
@@ -74,13 +94,14 @@ export class AlpacaClient {
         });
         const text = await res.text();
         if (res.ok) return (text ? JSON.parse(text) : null) as T;
+        const asked = res.status === 429 || res.status === 503 ? retryAfterMs(res.headers) : null;
         const retryable = res.status === 429 || res.status >= 500;
-        if (retryable && idempotent && attempt < this.retries) {
+        if (retryable && idempotent && attempt < this.retries && (asked === null || asked <= this.maxRetryWaitMs)) {
           attempt++;
-          await this.sleep(Math.min(8000, 500 * 2 ** attempt));
+          await this.sleep(asked ?? Math.min(8000, 500 * 2 ** attempt));
           continue;
         }
-        throw new AlpacaError(res.status, text);
+        throw new AlpacaError(res.status, text, undefined, asked);
       } catch (err) {
         if (err instanceof AlpacaError) throw err;
         if (idempotent && attempt < this.retries) {

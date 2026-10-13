@@ -76,9 +76,20 @@ Each has a test that fails on the old code (`test/engine-live.test.ts` and `test
 
 Also fixed: `scripts/ui-smoke.cjs` never imported `chromium`. Run it in a cloud session with `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
 
-## Open review findings: fix these before live enforcement
+## Review findings 6 to 11: fixed (2026-10-13)
 
-Ordered by risk. Paper trading in dry run is safe with these open. Findings 1 to 5 are kept in the table for reference.
+Tests: `test/referee-sync.test.ts` and `test/alpaca.test.ts`. Each fails on the old code.
+
+6. A backfilled fill dated today runs as `late`. Its breaches are stored (marked "(seen late)"), notified, and enforced if that same trade is still open. The decision waits until the whole backfill batch is applied, so a later fill in the batch that closed the trade, or a newer trade in the same symbol, is never touched. When Alpaca's positions and our fills disagree, `reconcile('drift')` runs, at most once a minute. While live, the stream re-sends `listen` every 30 s as a heartbeat (Alpaca answers `listening`). After 75 s with no message at all, it drops the socket and reconnects, and the reconnect syncs.
+7. Same mechanism, with no 5-minute cut-off. The out-of-order path that rebuilds the engine handles today's backfilled fills the same way. It doesn't save day state or announce a lock mid-replay; afterwards, today's breach count is the saved count plus the late ones.
+8. `seed` counts only trades it didn't already hold, and `rebuildEngine` seeds after replaying fills.
+9. Database writes on enforcement paths go through `safeWrite`, so a failure is logged once a minute, reported to the trader once an hour, and enforcement carries on. `onBreach` starts the flatten before it writes the breach. A fill the database refuses is still applied, kept in memory, and written on the next sync. The kill switch and the enforcement toggle change the setting in memory before writing `config.json`. If the write fails, an error action says the old setting returns after a restart.
+10. `doReconcile` remembers the client, store and engine it started with, and stops if any change while it waits on Alpaca. `reconcile()` coalesces requests made during a run into one more run, and the promise it returns covers that run. A replaced stream's handlers are ignored.
+11. The client reads `Retry-After` (seconds or a date) and Alpaca's `X-RateLimit-Reset`. GETs wait it out up to 10 s, or fail at once with `AlpacaError.retryAfterMs`. A close waits it out in line up to 5 s; the retry queue never retries sooner than Alpaca asked.
+
+## The original review findings (all fixed)
+
+Kept for reference.
 
 | # | Problem | Where | Fix |
 | --- | --- | --- | --- |
@@ -103,7 +114,7 @@ The website describes the Referee as a Topstep Combine pilot that holds rules on
 1. ~~Fix findings 1 to 5 and add a test for each.~~ Done 2026-10-13.
 2. Run a paper session with Dad in dry run. Read the breaches and the log at `~/.mytradepilot/logs/`, and fix what looks wrong.
 3. Check Windows end to end: desktop notifications (a PowerShell toast, untested), the `better-sqlite3` install, and `npm start` from a fresh clone.
-4. Fix findings 6 to 11.
+4. ~~Fix findings 6 to 11.~~ Done 2026-10-13.
 5. Put Dad's written strategy into the Setup page and tune `DEFAULT_STRATEGY` in `src/server/api.ts` if the defaults are wrong.
 6. Before the late December launch, decide how waitlist users install it: a signed Windows and Mac installer, or the npm steps above.
 

@@ -95,19 +95,24 @@ export class LiveEngine {
     this.rules = structuredClone(rules);
   }
 
-  /** Closed trades from other sources (CSV imports). Today's ones also count toward today's limits. */
+  /**
+   * Closed trades from other sources (CSV imports). Today's ones also count toward today's limits, once: a trade
+   * the engine already holds (a re-import) is not counted again. Call it after replaying fills, which roll the day.
+   */
   seed(trades: Trade[], now: number): void {
-    const closed = trades.filter((t) => t.exitTime !== null).sort((a, b) => a.entryTime.getTime() - b.entryTime.getTime());
+    const closed = trades.filter((t) => t.exitTime !== null).sort((a, b) => a.exitTime!.getTime() - b.exitTime!.getTime());
     const known = new Set(this.history.map((t) => t.key));
+    const added: Trade[] = [];
     for (const t of closed) {
       if (known.has(t.key)) continue;
       this.history.push(t);
       known.add(t.key);
+      added.push(t);
     }
     this.historyDirty = true;
     this.rollDay(now);
     const today = marketClock(new Date(now)).date;
-    for (const t of closed) {
+    for (const t of added) {
       if (marketClock(t.entryTime).date !== today) continue;
       this.day.tradesOpened++;
       this.countClosed(t);
@@ -130,7 +135,7 @@ export class LiveEngine {
 
   private refreshRecord(): void {
     if (!this.historyDirty) return;
-    this.record.set(this.history);
+    this.record.set(this.closedTrades());
     this.historyDirty = false;
   }
 
@@ -158,9 +163,10 @@ export class LiveEngine {
     } else {
       this.day.losses++;
       this.day.consecutiveLosses++;
-      this.day.lastLossExitAt = t.exitTime!.getTime();
+      this.day.lastLossExitAt = Math.max(this.day.lastLossExitAt ?? -Infinity, t.exitTime!.getTime());
     }
-    this.lastTodayTrade = t;
+    // Live exits arrive in time order; a seeded import may be older than a live trade already counted.
+    if (!this.lastTodayTrade || t.exitTime!.getTime() >= this.lastTodayTrade.exitTime!.getTime()) this.lastTodayTrade = t;
   }
 
   private breach(events: EngineEvent[], time: number, rule: RuleId | 'locked', symbol: string | null, tradeKey: string | null, message: string, action: RuleAction): void {
@@ -447,11 +453,16 @@ export class LiveEngine {
    * Bring back what a replay of fills cannot rebuild: the lock, today's breach count (time-based breaches
    * such as a missing stop are not re-derived) and whether the daily loss limit already fired.
    */
-  restore(state: { date: string; lock: { until: number; reason: string } | null; breaches: number; dailyLossBreached: boolean }, now: number): void {
+  restore(state: { date: string; lock: { until: number; reason: string } | null; breaches: number; dailyLossBreached: boolean }, now: number, newBreaches = 0): void {
     this.rollDay(now);
     if (state.date !== this.day.date) return;
     if (state.lock && state.lock.until > now) this.lock = { ...state.lock };
-    this.day.breaches = Math.max(this.day.breaches, state.breaches);
+    // `newBreaches`: breaches the replay found that were never seen before (backfilled fills), so not in state.breaches.
+    this.day.breaches = Math.max(this.day.breaches, state.breaches + newBreaches);
+    const cap = this.rules.maxBreachesPerDay;
+    if (newBreaches > 0 && cap.enabled && this.day.breaches >= cap.count && !this.lock) {
+      this.lock = { until: endOfMarketDay(now), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})` };
+    }
     if (state.dailyLossBreached) {
       this.dailyLossBreached = true;
       this.day.dailyLossBreached = true;

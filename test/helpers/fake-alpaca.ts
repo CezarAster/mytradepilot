@@ -16,6 +16,12 @@ export class FakeAlpaca {
   failClose = 0;
   /** Symbols whose entry in a close-all answer fails. */
   failCloseAll: string[] = [];
+  /** Answer this method + path with 429 and this Retry-After, `times` times. */
+  rateLimit: { method: string; path: string; retryAfter: string; times: number } | null = null;
+  /** While set, the fills endpoint answers only once it resolves (with the fills as they were when asked). */
+  holdFills: Promise<void> | null = null;
+  /** Bodies posted to /hook, the generic webhook. */
+  hooks: { title: string; body: string }[] = [];
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -25,7 +31,22 @@ export class FakeAlpaca {
         res.writeHead(code, { 'content-type': 'application/json' });
         res.end(JSON.stringify(body));
       };
+      if (url.pathname === '/hook' && req.method === 'POST') {
+        let text = '';
+        req.on('data', (c: Buffer) => (text += c));
+        req.on('end', () => {
+          this.hooks.push(JSON.parse(text));
+          json(200, { ok: true });
+        });
+        return;
+      }
       if (req.headers['apca-api-key-id'] !== 'KEYKEYKEY') return json(401, { message: 'unauthorized' });
+      const rl = this.rateLimit;
+      if (rl && rl.times > 0 && rl.method === req.method && rl.path === url.pathname) {
+        rl.times--;
+        res.writeHead(429, { 'content-type': 'application/json', 'retry-after': rl.retryAfter });
+        return res.end(JSON.stringify({ message: 'too many requests' }));
+      }
       if (this.failNext === url.pathname) {
         this.failNext = null;
         return json(500, { message: 'boom' });
@@ -80,6 +101,7 @@ export class FakeAlpaca {
         const token = url.searchParams.get('page_token');
         let list = this.fills.filter((f) => !after || f.transaction_time > after);
         if (token) list = list.slice(list.findIndex((f) => f.id === token) + 1);
+        if (this.holdFills) return void this.holdFills.then(() => json(200, list.slice(0, 100)));
         return json(200, list.slice(0, 100));
       }
       if (url.pathname.includes('/v2/stocks/')) return json(200, { bars: [], next_page_token: null });
