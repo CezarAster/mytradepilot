@@ -60,7 +60,7 @@ No retail broker exposes a hook that lets a third party veto an order before it 
 
 ## Security posture
 
-- The service binds to 127.0.0.1 only. Requests carrying a foreign `Origin` are refused, so a web page in the same browser cannot drive it.
+- The service binds to 127.0.0.1 only. It answers only when Host is `127.0.0.1:<port>` or `localhost:<port>` (or the Vite dev server on `:5174`), which defeats DNS rebinding. A browser `Origin` must be one of those too, and every write must be `content-type: application/json` (415 otherwise), so a web page in the same browser, even one on another localhost port, cannot drive it.
 - Alpaca keys live in `config.json` with owner-only permissions, or in environment variables. They never reach the browser (the settings API returns a preview only).
 - The MCP server can read state and declare a trade. It cannot change rules, toggle enforcement or close positions.
 - Enforcement only ever reduces: cancel orders and close positions. There is no order ticket.

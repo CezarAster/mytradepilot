@@ -211,6 +211,11 @@ export class LiveEngine {
       else if (result.kind === 'add') this.onAdd(events, fill, result.position!);
       else if (result.kind === 'reduce') {
         const p = this.positions.get(fill.symbol)!;
+        // Book the part that left now, so the daily loss limit sees a losing partial exit at once.
+        const sign = p.direction === 'long' ? 1 : -1;
+        const booked = sign * (fill.price - p.avgEntry) * (Math.abs(p.qty) - Math.abs(result.position!.qty)) - fill.fee;
+        p.realizedPnl += booked;
+        this.day.realizedPnl += booked;
         p.qty = result.position!.qty;
         p.avgEntry = result.position!.avgEntry;
         p.mark = fill.price;
@@ -218,6 +223,8 @@ export class LiveEngine {
       } else if (result.kind === 'close') this.onClose(events, fill, result.closed!);
       result = result.flippedInto;
     }
+    // A closed or reduced position must leave unrealized P&L now, not at the next marks, or its loss counts twice.
+    this.recomputeUnrealized();
     return events;
   }
 
@@ -239,6 +246,7 @@ export class LiveEngine {
       stopDeadline: null,
       mark: fill.price,
       refereeClosed: false,
+      realizedPnl: 0,
     };
     this.positions.set(fill.symbol, p);
     if (decl) {
@@ -313,6 +321,7 @@ export class LiveEngine {
     this.history.push(trade);
     this.historyDirty = true;
     this.countClosed(trade);
+    this.day.realizedPnl -= p?.realizedPnl ?? 0; // partial exits were booked already; the trade's P&L includes them
     const r = this.rules;
     if (trade.pnl <= 0) {
       if (r.noReentryAfterLoss.enabled) {
@@ -386,15 +395,19 @@ export class LiveEngine {
   /** Latest prices for open symbols, for unrealized P&L and the daily loss limit. */
   setMarks(marks: Record<string, number>, now: number): EngineEvent[] {
     const events: EngineEvent[] = [];
-    let unrealized = 0;
     for (const p of this.positions.values()) {
       const m = marks[p.symbol];
       if (m !== undefined && Number.isFinite(m)) p.mark = m;
-      if (p.mark !== null) unrealized += (p.mark - p.avgEntry) * p.qty;
     }
-    this.day.unrealizedPnl = unrealized;
+    this.recomputeUnrealized();
     this.checkDailyLoss(events, now);
     return events;
+  }
+
+  private recomputeUnrealized(): void {
+    let unrealized = 0;
+    for (const p of this.positions.values()) if (p.mark !== null) unrealized += (p.mark - p.avgEntry) * p.qty;
+    this.day.unrealizedPnl = unrealized;
   }
 
   private checkDailyLoss(events: EngineEvent[], now: number): void {
@@ -420,6 +433,8 @@ export class LiveEngine {
     if (this.lock && this.lock.until <= now) this.lock = null;
     const r = this.rules.stopRequired;
     for (const p of this.positions.values()) {
+      // A position the referee is already closing has had its orders cancelled on purpose: no second breach.
+      if (p.refereeClosed) continue;
       if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop) {
         p.stopDeadline = null;
         this.breach(events, now, 'stopRequired', p.symbol, p.tradeKey, `Your rule: a stop order within ${r.withinSeconds} s of entry. ${p.symbol} has been open ${Math.round((now - p.entryTime) / 1000)} s with no stop.`, r.action);
@@ -445,14 +460,14 @@ export class LiveEngine {
   }
 
   /** Mark a position as closed by the referee so its exit is labelled, not counted as a stop-out. */
-  markRefereeClosed(symbol: string): void {
+  markRefereeClosed(symbol: string, closing = true): void {
     const p = this.positions.get(symbol);
-    if (p) p.refereeClosed = true;
+    if (p) p.refereeClosed = closing;
   }
 
   /** Who is still open and the next fill would be their stop check: for the server to poll open orders. */
   positionsAwaitingStop(): string[] {
-    return [...this.positions.values()].filter((p) => p.stopDeadline !== null && !p.stop).map((p) => p.symbol);
+    return [...this.positions.values()].filter((p) => p.stopDeadline !== null && !p.stop && !p.refereeClosed).map((p) => p.symbol);
   }
 
   private prevContext(now: number): { label: string; minutesSinceLastLoss: number | null } {

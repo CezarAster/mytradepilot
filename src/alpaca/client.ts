@@ -27,6 +27,15 @@ export interface ClientOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** One symbol's outcome from close-all, which answers 207 Multi-Status with a result per position. */
+export interface CloseAllResult {
+  symbol: string;
+  ok: boolean;
+  status: number;
+  orderId: string | null;
+  error: string | null;
+}
+
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export class AlpacaClient {
@@ -111,8 +120,25 @@ export class AlpacaClient {
     return this.request('DELETE', `${this.tradingHost}/v2/positions/${encodeURIComponent(symbol)}`, undefined, false);
   }
 
-  closeAllPositions(cancelOrders = true): Promise<unknown> {
-    return this.request('DELETE', `${this.tradingHost}/v2/positions${this.q({ cancel_orders: cancelOrders })}`, undefined, false);
+  /**
+   * Close every position at market. Alpaca answers 207 even when some closes are refused, so the caller gets one
+   * result per symbol and must check each.
+   */
+  async closeAllPositions(cancelOrders = true): Promise<CloseAllResult[]> {
+    const raw = await this.request<unknown>('DELETE', `${this.tradingHost}/v2/positions${this.q({ cancel_orders: cancelOrders })}`, undefined, false);
+    if (!Array.isArray(raw)) return [];
+    return raw.map((r: { symbol?: unknown; status?: unknown; body?: { id?: unknown; message?: unknown } | null }) => {
+      const status = Number(r?.status ?? 0);
+      const ok = status >= 200 && status < 300;
+      const body = r?.body ?? null;
+      return {
+        symbol: String(r?.symbol ?? '').toUpperCase(),
+        ok,
+        status,
+        orderId: ok && typeof body?.id === 'string' ? body.id : null,
+        error: ok ? null : typeof body?.message === 'string' ? body.message : `status ${status}`,
+      };
+    });
   }
 
   listOrders(params: { status?: 'open' | 'closed' | 'all'; after?: string; until?: string; limit?: number; direction?: 'asc' | 'desc'; nested?: boolean; symbols?: string } = {}): Promise<AlpacaOrder[]> {

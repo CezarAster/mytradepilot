@@ -55,7 +55,7 @@ On Windows, `npm install` builds `better-sqlite3`. It uses a prebuilt binary for
 - **Service**, in `src/server/`: SQLite store, backfill on start, live stream, marks, enforcement with dry run and a kill switch, an HTTP API with server-sent events bound to 127.0.0.1, and desktop plus Discord or Telegram notifications.
 - **UI**, in `app/`: Today, Rules, Record (with CSV import), Setup (strategy and setup check), Settings, Log, and Ask Claude.
 - **MCP server**, in `src/mcp/`: next-trade state, rules, record, today, trades, breaches, strategy, setup check, and declare.
-- **Tests**: 38 tests (`npm test`) cover the engine, strategy, the service against a fake Alpaca, and an MCP round trip. A Playwright UI smoke test lives in `scripts/ui-smoke.cjs`.
+- **Tests**: 61 tests (`npm test`) cover the engine, strategy, the service against a fake Alpaca, and an MCP round trip. A Playwright UI smoke test lives in `scripts/ui-smoke.cjs`.
 - **Review fixes**: an adversarial review found 24 problems. These are fixed:
   - Saving settings no longer flattens protected positions or drops the lock.
   - Out-of-order backfill now rebuilds in time order.
@@ -63,18 +63,21 @@ On Windows, `npm install` builds `better-sqlite3`. It uses a prebuilt binary for
   - The flatten debounce is per trade.
   - Stale working orders are closed out on reconcile.
   - Replays keep the declared flag.
+- **Findings 1 to 5** (fixed 2026-10-14, one test each, marked `fix:` in `test/engine-live.test.ts` and `test/referee.test.ts`):
+  - The HTTP API answers only to `127.0.0.1:<port>` and `localhost:<port>` (plus the Vite dev server on `:5174`) as Host and Origin, and refuses non-JSON writes with 415.
+  - Close-all reads Alpaca's 207 per symbol. A refused symbol gets an error action and a notification, and its close is retried from the tick loop. If the whole request fails, every open position is retried.
+  - Unrealized P&L is recomputed after every fill, so a losing exit no longer counts twice against the daily loss limit.
+  - Partial exits book their P&L (fees included) at once. The close books only the rest.
+  - A position the Referee is closing gets no stopRequired breach. If the Referee gives up closing it, the check applies again.
 
 ## Open review findings: fix these before live enforcement
+
+Findings 1 to 5 are fixed (see above). The numbers below keep the original numbering.
 
 Ordered by risk. Paper trading in dry run is safe with these open.
 
 | # | Problem | Where | Fix |
 | --- | --- | --- | --- |
-| 1 | The Origin check accepts any localhost port and plain-text POSTs, so a malicious page on localhost or a DNS-rebinding page could hit kill, flatten or enforcement | `src/server/http.ts` `sameOrigin`, `handle` | Allow only `127.0.0.1:<port>` and `localhost:<port>` as Host and Origin, plus the Vite dev origin `:5174`. Require `content-type: application/json` on non-GET requests. |
-| 2 | Close-all (used by the daily loss limit) treats Alpaca's 207 multi-status as full success | `src/alpaca/client.ts` `closeAllPositions`, `src/server/referee.ts` `flatten(null)` | Parse the 207 array. Log an error action per failed symbol and queue `flattenRetries` for those symbols. Mark only the closed ones `refereeClosed`. |
-| 3 | A losing exit counts twice against the daily loss limit for up to 5 seconds, because unrealized P&L is only recomputed in `setMarks` | `src/engine/live.ts` | Recompute unrealized P&L from the open positions at the end of `applyFill`. |
-| 4 | Partial exits book no realized P&L until the last share sells | `src/engine/live.ts` `applyFill` reduce branch, `countClosed` | Book `sign * (price - avgEntry) * qty` on each reduce. Track it on the position and subtract it when the trade closes. |
-| 5 | A position the Referee is closing can get a second stopRequired breach and a second flatten | `src/engine/live.ts` `tick`, `positionsAwaitingStop` | Skip positions with `refereeClosed`. |
 | 6 | Fills found only by backfill are never enforced. Position drift is detected every 5 seconds but only logged. A stream that silently stops delivering still reads "live" | `src/server/referee.ts` `doReconcile`, `refreshPositions`; `src/alpaca/stream.ts` | Use mode `late` for every backfilled fill and enforce while the position is still open. On drift, call `reconcile('drift')`, rate-limited. Add an idle timeout so the stream reconnects. |
 | 7 | Backfilled fills older than 5 minutes run as `history`: their breaches are counted toward the lock but never stored or notified | `src/server/referee.ts` `doReconcile` | Same fix as #6. |
 | 8 | Re-importing a CSV recounts today's trades, and a restart loses the seeded count | `src/engine/live.ts` `seed`, `src/server/referee.ts` `rebuildEngine` | Count only newly added trades. Seed after the fill replay. |
@@ -88,7 +91,7 @@ The website describes the Referee as a Topstep Combine pilot that holds rules on
 
 ## Next steps, in order
 
-1. Fix findings 1 to 5 and add a test for each. Use the fake Alpaca in `test/helpers/fake-alpaca.ts` and the patterns at the end of `test/referee.test.ts`.
+1. ~~Fix findings 1 to 5 and add a test for each.~~ Done 2026-10-14.
 2. Run a paper session with Dad in dry run. Read the breaches and the log at `~/.mytradepilot/logs/`, and fix what looks wrong.
 3. Check Windows end to end: desktop notifications (a PowerShell toast, untested), the `better-sqlite3` install, and `npm start` from a fresh clone.
 4. Fix findings 6 to 11.

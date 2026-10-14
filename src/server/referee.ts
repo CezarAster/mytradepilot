@@ -464,10 +464,27 @@ export class Referee {
     try {
       let detail: string;
       if (symbol === null) {
-        for (const p of this.engine.openPositions()) this.engine.markRefereeClosed(p.symbol);
-        await client.closeAllPositions(true);
-        detail = `Closed every position and cancelled open orders (${rule}).`;
-        this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'flatten_all', symbol: null, breachId, detail, ok: true }) });
+        // Marked before the request so a close fill that beats the response is labelled; refused symbols are unmarked below.
+        const open = this.engine.openPositions();
+        for (const p of open) this.engine.markRefereeClosed(p.symbol);
+        const results = await client.closeAllPositions(true);
+        const closed = results.filter((r) => r.ok);
+        const failed = results.filter((r) => !r.ok);
+        const closedSyms = new Set(closed.map((r) => r.symbol));
+        const failedSyms = new Set(failed.map((r) => r.symbol));
+        // A refused symbol stays marked while its retry is queued (the referee is still closing it).
+        for (const p of open) if (!closedSyms.has(p.symbol) && !failedSyms.has(p.symbol)) this.engine.markRefereeClosed(p.symbol, false);
+        for (const f of failed) {
+          const tk = open.find((p) => p.symbol === f.symbol)?.tradeKey ?? null;
+          const msg = `Close of ${f.symbol} failed during close-all (${rule}): ${f.error}.${this.queueFlattenRetry(f.symbol, tk, breachId, rule)}`;
+          this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'error', symbol: f.symbol, breachId, detail: msg, ok: false }) });
+          this.log.error(msg);
+          void this.notifier.send(`Referee: could not close ${f.symbol}`, msg);
+        }
+        detail = !results.length
+          ? `No open positions to close (${rule}); cancelled open orders.`
+          : `Closed ${closed.length ? closed.map((r) => r.symbol).join(', ') : 'nothing'} and cancelled open orders (${rule}).${failed.length ? ` Could not close ${failed.map((r) => r.symbol).join(', ')}: retrying.` : ''}`;
+        this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'flatten_all', symbol: null, breachId, detail, ok: failed.length === 0 }) });
       } else {
         this.engine.markRefereeClosed(symbol);
         const cancelled = await client.cancelOrdersFor(symbol);
@@ -483,21 +500,30 @@ export class Referee {
       this.lastFlatten.delete(key);
       let msg = `Flatten of ${symbol ?? 'everything'} failed: ${(err as Error).message}`;
       if (symbol !== null) {
-        const attempts = (this.flattenRetries.get(symbol)?.attempts ?? 0) + 1;
-        if (attempts <= MAX_FLATTEN_ATTEMPTS) {
-          const wait = Math.min(60000, 5000 * 2 ** (attempts - 1));
-          this.flattenRetries.set(symbol, { symbol, tradeKey, breachId, rule, attempts, nextAt: this.now() + wait });
-          msg += ` Its open orders may already be cancelled, so it may have no stop. Retrying in ${Math.round(wait / 1000)} s (attempt ${attempts} of ${MAX_FLATTEN_ATTEMPTS}).`;
-        } else {
-          this.flattenRetries.delete(symbol);
-          msg += ` Gave up after ${MAX_FLATTEN_ATTEMPTS} attempts. Close ${symbol} yourself and check its stop.`;
-        }
+        msg += this.queueFlattenRetry(symbol, tradeKey, breachId, rule);
         void this.notifier.send(`Referee: could not close ${symbol}`, msg);
+      } else {
+        // The whole close-all failed: retry each open position on its own.
+        for (const p of this.engine.openPositions()) msg += this.queueFlattenRetry(p.symbol, p.tradeKey, breachId, rule);
+        void this.notifier.send('Referee: could not close positions', msg);
       }
       this.emit({ type: 'action', action: this.store.insertAction({ time: this.now(), kind: 'error', symbol, breachId, detail: msg, ok: false }) });
       this.log.error(msg);
       return msg;
     }
+  }
+
+  /** Schedule another close of `symbol` from the tick loop with backoff; returns the sentence to append to the error. */
+  private queueFlattenRetry(symbol: string, tradeKey: string | null, breachId: number | null, rule: string): string {
+    const attempts = (this.flattenRetries.get(symbol)?.attempts ?? 0) + 1;
+    if (attempts <= MAX_FLATTEN_ATTEMPTS) {
+      const wait = Math.min(60000, 5000 * 2 ** (attempts - 1));
+      this.flattenRetries.set(symbol, { symbol, tradeKey, breachId, rule, attempts, nextAt: this.now() + wait });
+      return ` Its open orders may already be cancelled, so it may have no stop. Retrying in ${Math.round(wait / 1000)} s (attempt ${attempts} of ${MAX_FLATTEN_ATTEMPTS}).`;
+    }
+    this.flattenRetries.delete(symbol);
+    this.engine.markRefereeClosed(symbol, false);
+    return ` Gave up after ${MAX_FLATTEN_ATTEMPTS} attempts. Close ${symbol} yourself and check its stop.`;
   }
 
   /** Close at market, retrying the refusals that clear on their own: shares still held by a cancelling order (403), rate limit, 5xx, network. */

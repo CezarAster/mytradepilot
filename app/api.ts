@@ -52,7 +52,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   try {
     res = await fetch(path, {
       method,
-      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      // Every write is JSON, even without a body: the service refuses other content types.
+      headers: method === 'GET' ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store',
     });

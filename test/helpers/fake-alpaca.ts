@@ -14,6 +14,8 @@ export class FakeAlpaca {
   failNext: string | null = null;
   /** Fail this many close-position calls with a 500. */
   failClose = 0;
+  /** Symbols close-all refuses (Alpaca still answers 207, with a 403 entry for each). */
+  refuseCloseAll = new Set<string>();
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -32,8 +34,13 @@ export class FakeAlpaca {
       if (url.pathname === '/v2/clock') return json(200, { timestamp: new Date().toISOString(), is_open: true, next_open: '', next_close: '' });
       if (url.pathname === '/v2/positions' && req.method === 'GET') return json(200, this.positions);
       if (url.pathname === '/v2/positions' && req.method === 'DELETE') {
-        this.positions = [];
-        return json(207, []);
+        const out = this.positions.map((p) =>
+          this.refuseCloseAll.has(p.symbol)
+            ? { symbol: p.symbol, status: 403, body: { code: 40310000, message: 'insufficient qty available for order' } }
+            : { symbol: p.symbol, status: 200, body: { id: 'closeall-' + p.symbol, symbol: p.symbol, status: 'accepted' } },
+        );
+        this.positions = this.positions.filter((p) => this.refuseCloseAll.has(p.symbol));
+        return json(207, out);
       }
       // Like Alpaca: bracket legs nest under their parent with nested=true; a cancel completes asynchronously
       // (listed once as pending_cancel); a close is refused while any order on the symbol holds the shares.

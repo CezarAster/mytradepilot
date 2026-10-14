@@ -1,6 +1,7 @@
 // Local HTTP server: JSON API, server-sent events, and the built UI. Binds to 127.0.0.1 only.
-// Cross-site requests from a browser tab on another origin are refused by the Origin check, so a web page
-// cannot drive the referee or read the trader's data.
+// Requests must name this server as Host (which defeats DNS rebinding) and, when a browser sends an Origin, come from
+// this server's own page or the Vite dev server. Writes must be JSON: a plain-text POST, which a page on any origin can
+// send without a preflight, is refused. So a web page cannot drive the referee or read the trader's data.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -21,6 +22,8 @@ const MIME: Record<string, string> = {
 };
 
 const MAX_BODY = 25 * 1024 * 1024;
+/** Port of the Vite dev server for the UI (vite.app.config.ts); it proxies /api here with its own Host. */
+export const DEV_UI_PORT = 5174;
 
 type Handler = (req: IncomingMessage, res: ServerResponse, params: Record<string, string>, body: unknown) => Promise<unknown> | unknown;
 
@@ -46,6 +49,7 @@ export class RefereeHttp {
   private server: Server | null = null;
   private sseClients = new Set<ServerResponse>();
   private unsubscribe: (() => void) | null = null;
+  private port = 0;
 
   constructor(referee: Referee, opts: HttpOptions) {
     this.referee = referee;
@@ -106,7 +110,8 @@ export class RefereeHttp {
       this.server!.once('error', reject);
       this.server!.listen(this.opts.port, host, () => {
         const addr = this.server!.address();
-        resolvePort(typeof addr === 'object' && addr ? addr.port : this.opts.port);
+        this.port = typeof addr === 'object' && addr ? addr.port : this.opts.port;
+        resolvePort(this.port);
       });
     });
   }
@@ -130,27 +135,44 @@ export class RefereeHttp {
     }
   }
 
+  /** host:port pairs this server answers to: itself and the Vite dev server, by IP or by name. */
+  private allowedHosts(): Set<string> {
+    const out = new Set<string>();
+    for (const port of [this.port, DEV_UI_PORT]) for (const name of ['127.0.0.1', 'localhost']) out.add(`${name}:${port}`);
+    return out;
+  }
+
+  /** A DNS-rebinding page reaches us with its own name in Host; refuse anything but our own address. */
+  private hostAllowed(req: IncomingMessage): boolean {
+    return this.allowedHosts().has((req.headers.host ?? '').toLowerCase());
+  }
+
   private sameOrigin(req: IncomingMessage): boolean {
     const origin = req.headers.origin;
-    if (!origin) return true; // same-origin fetches and curl send no Origin on GET; browsers send it on POST from our page too
+    if (!origin) return true; // curl and the MCP server send no Origin; a browser sends one on every write
     try {
       const o = new URL(origin);
-      const host = req.headers.host ?? '';
-      if (o.host === host) return true;
-      // Vite dev server on another port, same machine.
-      return (o.hostname === '127.0.0.1' || o.hostname === 'localhost') && (host.startsWith('127.0.0.1') || host.startsWith('localhost'));
+      return o.protocol === 'http:' && this.allowedHosts().has(o.host.toLowerCase());
     } catch {
       return false;
     }
+  }
+
+  /** A write must declare a JSON body: browsers cannot send that cross-origin without a preflight we never answer. */
+  private jsonWrite(req: IncomingMessage): boolean {
+    if (req.method === 'GET' || req.method === 'HEAD') return true;
+    return (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const path = url.pathname;
     try {
+      if (!this.hostAllowed(req)) return this.json(res, 403, { error: 'unknown Host refused' });
       if (path === '/api/events' && req.method === 'GET') return this.sse(req, res);
       if (path.startsWith('/api/')) {
         if (!this.sameOrigin(req)) return this.json(res, 403, { error: 'cross-origin request refused' });
+        if (!this.jsonWrite(req)) return this.json(res, 415, { error: 'content-type must be application/json' });
         const route = this.routes.find((r) => r.method === req.method && r.pattern.test(path));
         if (!route) return this.json(res, 404, { error: `no ${req.method} ${path}` });
         const m = route.pattern.exec(path)!;

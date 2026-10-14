@@ -292,3 +292,74 @@ test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed
   assert.equal(fake.positions.length, 0);
   await referee.stop();
 });
+
+test('fix: close-all reads the 207: a refused symbol is logged, kept marked, and retried; the closed one is not', async () => {
+  clock = Date.parse('2026-10-19T14:00:00Z');
+  const { referee } = await makeReferee();
+  const stream = FakeStream.current!;
+  for (const sym of ['MMM', 'NNN']) {
+    const leg = order(`${sym}-stop`, sym, 'sell', 'stop', 'held', { stop_price: '9' });
+    const entry = fillUpdate(`${sym}-in`, sym, 'buy', 10, 10);
+    stream.push({ ...entry, order: { ...entry.order, order_class: 'bracket', legs: [leg] } });
+  }
+  fake.positions = [position('MMM', 10, 10), position('NNN', 10, 10)];
+  fake.refuseCloseAll = new Set(['NNN']);
+  fake.calls = [];
+  const out = await referee.manualFlatten(null);
+  assert.match(out.detail, /Closed MMM/);
+  assert.match(out.detail, /Could not close NNN/);
+  const actions = referee.state().recentActions;
+  assert.ok(actions.some((a) => a.kind === 'error' && a.symbol === 'NNN' && /insufficient qty/.test(a.detail) && /Retrying in 5 s/.test(a.detail)), 'one error per refused symbol');
+  assert.equal(actions.find((a) => a.kind === 'flatten_all')?.ok, false, 'close-all is not reported as a full success');
+  assert.deepEqual(fake.positions.map((p) => p.symbol), ['NNN']);
+
+  // The retry closes NNN on its own once the refusal clears.
+  fake.refuseCloseAll = new Set();
+  clock += 6000;
+  await tick(referee);
+  assert.ok(fake.calls.includes('DELETE /v2/positions/NNN'), `NNN retried: ${fake.calls.join(', ')}`);
+  assert.equal(fake.positions.length, 0);
+  assert.ok(referee.state().recentActions.some((a) => a.kind === 'flatten' && a.symbol === 'NNN' && /retry/.test(a.detail)));
+  await settle();
+  await referee.stop();
+});
+
+test('fix: the HTTP API refuses a foreign Host, a localhost page on another port, and non-JSON writes', async () => {
+  clock = Date.parse('2026-10-20T14:00:00Z');
+  const { referee } = await makeReferee({ dryRun: true });
+  const http = new RefereeHttp(referee, { port: 0, staticDir: null, log: new Logger(null, 'error') });
+  const port = await http.listen();
+  const { request } = await import('node:http');
+  const call = (method: string, path: string, headers: Record<string, string>, body?: string) =>
+    new Promise<number>((resolveStatus, reject) => {
+      const req = request({ host: '127.0.0.1', port, method, path, headers }, (res) => {
+        res.resume();
+        resolveStatus(res.statusCode ?? 0);
+      });
+      req.on('error', reject);
+      req.end(body);
+    });
+  const json = { 'content-type': 'application/json' };
+
+  // DNS rebinding: the page's own name arrives as Host.
+  assert.equal(await call('GET', '/api/state', { host: `evil.example:${port}` }), 403);
+  assert.equal(await call('POST', '/api/kill', { ...json, host: `evil.example:${port}`, origin: `http://evil.example:${port}` }, '{}'), 403);
+  assert.equal(await call('GET', '/', { host: `evil.example:${port}` }), 403);
+  // Another local page, on any other port.
+  assert.equal(await call('POST', '/api/kill', { ...json, host: `127.0.0.1:${port}`, origin: 'http://localhost:9999' }, '{}'), 403);
+  assert.equal(await call('POST', '/api/kill', { ...json, host: `127.0.0.1:${port}`, origin: `https://127.0.0.1:${port}` }, '{}'), 403);
+  // A plain-text form post needs no preflight, so it is refused even without an Origin.
+  assert.equal(await call('POST', '/api/kill', { host: `127.0.0.1:${port}`, 'content-type': 'text/plain' }, '{}'), 415);
+  assert.equal(await call('DELETE', '/api/declare', { host: `127.0.0.1:${port}` }), 415);
+  assert.equal(referee.state().status.enforcement.enabled, true, 'none of those reached the kill switch');
+
+  // Our own page, by IP or name, and the Vite dev server proxy.
+  assert.equal(await call('GET', '/api/state', { host: `localhost:${port}` }), 200);
+  assert.equal(await call('POST', '/api/plan', { ...json, host: `localhost:${port}`, origin: `http://localhost:${port}` }, '{}'), 200);
+  assert.equal(await call('DELETE', '/api/declare', { ...json, host: '127.0.0.1:5174', origin: 'http://127.0.0.1:5174' }), 200);
+  assert.equal(await call('POST', '/api/kill', { 'content-type': 'application/json; charset=utf-8', host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}` }, '{}'), 200);
+  assert.equal(referee.state().status.enforcement.enabled, false);
+
+  await http.close();
+  await referee.stop();
+});

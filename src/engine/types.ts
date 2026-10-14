@@ -127,6 +127,8 @@ export interface OpenPosition {
   mark: number | null;
   /** Set when the referee itself closed it. */
   refereeClosed: boolean;
+  /** P&L already booked to the day by partial exits; the full trade P&L replaces it when the trade closes. */
+  realizedPnl: number;
 }
 
 export type EngineEvent =

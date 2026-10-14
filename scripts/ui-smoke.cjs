@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { chromium } = require('playwright-core');
 
 const REPO = require('node:path').resolve(__dirname, '..');
 const PORT = 4311;

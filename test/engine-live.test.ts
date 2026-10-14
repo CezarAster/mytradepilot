@@ -266,3 +266,55 @@ test('wilson interval and end of market day', () => {
   // Across the spring DST change (2026-03-08).
   assert.equal(endOfMarketDay(at('2026-03-08 10:00')), at('2026-03-09 00:00'));
 });
+
+const loose = (patch: Parameters<typeof rules>[0] = {}) => rules({ stopRequired: { enabled: false }, noReentryAfterLoss: { enabled: false }, cooldownAfterLosses: { enabled: false }, ...patch });
+
+test('fix: a losing exit leaves unrealized P&L at once, so it is not counted twice against the daily loss limit', () => {
+  const e = new LiveEngine({ rules: loose({ dailyLossLimit: { dollars: 500 } }) });
+  e.applyFill(fill('AAA', 'buy', 100, 50, '2026-03-02 09:40'));
+  assert.deepEqual(breaches(e.setMarks({ AAA: 47 }, at('2026-03-02 09:45'))), []); // -300 open
+  e.applyFill(fill('AAA', 'sell', 100, 47, '2026-03-02 09:46')); // -300 realized, nothing open
+  const s = e.snapshot(at('2026-03-02 09:46'));
+  assert.equal(s.day.realizedPnl, -300);
+  assert.equal(s.day.unrealizedPnl, 0);
+  assert.deepEqual(breaches(e.tick(at('2026-03-02 09:47'))), [], '-300 is inside a $500 limit');
+});
+
+test('fix: a partial exit books its P&L at once; the close books only the rest', () => {
+  const e = new LiveEngine({ rules: loose({ dailyLossLimit: { dollars: 500 } }) });
+  e.applyFill(fill('AAA', 'buy', 200, 50, '2026-03-02 09:40'));
+  e.applyFill(fill('AAA', 'sell', 100, 46, '2026-03-02 09:45')); // -400 booked, 100 left marked at 46: -400 open
+  let s = e.snapshot(at('2026-03-02 09:45'));
+  assert.equal(s.day.realizedPnl, -400);
+  assert.equal(s.day.unrealizedPnl, -400);
+  assert.equal(s.positions[0].realizedPnl, -400);
+  assert.deepEqual(breaches(e.tick(at('2026-03-02 09:45'))), ['dailyLossLimit'], '-800 breaks the $500 limit');
+  e.applyFill(fill('AAA', 'sell', 100, 50, '2026-03-02 09:50')); // the rest at breakeven: the trade lost 400 in all
+  s = e.snapshot(at('2026-03-02 09:50'));
+  assert.equal(s.day.realizedPnl, -400, 'not -800');
+  assert.equal(s.day.tradesClosed, 1);
+  assert.equal(s.day.losses, 1);
+  assert.equal(e.closedTrades()[0].pnl, -400);
+
+  // Shorts book the other way, fees included.
+  const f = new LiveEngine({ rules: loose() });
+  f.applyFill(fill('BBB', 'sell', 100, 50, '2026-03-02 10:00'));
+  f.applyFill({ ...fill('BBB', 'buy', 50, 52, '2026-03-02 10:05'), fee: 1 });
+  assert.equal(f.snapshot(at('2026-03-02 10:05')).day.realizedPnl, -101);
+  f.applyFill(fill('BBB', 'buy', 50, 48, '2026-03-02 10:10'));
+  assert.equal(f.snapshot(at('2026-03-02 10:10')).day.realizedPnl, f.closedTrades()[0].pnl);
+  assert.equal(f.closedTrades()[0].pnl, -1);
+});
+
+test('fix: a position the referee is closing gets no second stop-required breach', () => {
+  const e = new LiveEngine({ rules: loose({ stopRequired: { enabled: true, withinSeconds: 60 } }) });
+  e.applyFill(fill('AAA', 'buy', 10, 50, '2026-03-02 09:40'));
+  e.applyFill(fill('BBB', 'buy', 10, 50, '2026-03-02 09:40'));
+  e.markRefereeClosed('AAA');
+  assert.deepEqual(e.positionsAwaitingStop(), ['BBB']);
+  const ev = e.tick(at('2026-03-02 09:42'));
+  assert.deepEqual(ev.filter((x) => x.type === 'breach').map((x) => (x.type === 'breach' ? x.breach.symbol : '')), ['BBB']);
+  // If the referee gives up closing it, the missing stop counts again.
+  e.markRefereeClosed('AAA', false);
+  assert.deepEqual(breaches(e.tick(at('2026-03-02 09:43'))), ['stopRequired']);
+});
