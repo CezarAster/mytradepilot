@@ -9,7 +9,7 @@ import type {
   AlpacaPosition,
   AlpacaSnapshot,
 } from './types.ts';
-import { AlpacaError } from './types.ts';
+import { AlpacaError, parseRetryAfter } from './types.ts';
 
 export const TRADING_HOST = { paper: 'https://paper-api.alpaca.markets', live: 'https://api.alpaca.markets' } as const;
 export const STREAM_HOST = { paper: 'wss://paper-api.alpaca.markets/stream', live: 'wss://api.alpaca.markets/stream' } as const;
@@ -35,6 +35,9 @@ export interface CloseAllResult {
   orderId: string | null;
   error: string | null;
 }
+
+/** Longest Retry-After the client will sit out before retrying a read. */
+export const MAX_RETRY_AFTER_MS = 30000;
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -76,12 +79,14 @@ export class AlpacaClient {
         const text = await res.text();
         if (res.ok) return (text ? JSON.parse(text) : null) as T;
         const retryable = res.status === 429 || res.status >= 500;
+        const retryAfter = parseRetryAfter(res.headers.get('retry-after'));
         if (retryable && idempotent && attempt < this.retries) {
           attempt++;
-          await this.sleep(Math.min(8000, 500 * 2 ** attempt));
+          // Alpaca's rate limit says when it resets; retrying sooner only burns another request.
+          await this.sleep(retryAfter !== null ? Math.min(MAX_RETRY_AFTER_MS, retryAfter) : Math.min(8000, 500 * 2 ** attempt));
           continue;
         }
-        throw new AlpacaError(res.status, text);
+        throw new AlpacaError(res.status, text, undefined, retryAfter);
       } catch (err) {
         if (err instanceof AlpacaError) throw err;
         if (idempotent && attempt < this.retries) {

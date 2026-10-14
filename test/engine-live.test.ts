@@ -318,3 +318,17 @@ test('fix: a position the referee is closing gets no second stop-required breach
   e.markRefereeClosed('AAA', false);
   assert.deepEqual(breaches(e.tick(at('2026-03-02 09:43'))), ['stopRequired']);
 });
+
+test('fix: re-seeding the same imported trades does not count today\'s trades again', () => {
+  const e = new LiveEngine({ rules: loose() });
+  const t = (key: string, entry: string, exit: string, pnl: number) => ({ key, symbol: 'AAA', direction: 'long' as const, entryTime: new Date(at(entry)), exitTime: new Date(at(exit)), entryPrice: 10, exitPrice: 10, qty: 1, pnl, returnPct: 0, mfePct: null, maePct: null, stoppedOut: false, fills: 2, source: 'import' });
+  const trades = [t('i1', '2026-03-02 09:35', '2026-03-02 09:40', -5), t('i2', '2026-03-02 09:45', '2026-03-02 09:50', 5)];
+  e.seed(trades, at('2026-03-02 10:00'));
+  e.seed(trades, at('2026-03-02 10:01'));
+  const d = e.snapshot(at('2026-03-02 10:01')).day;
+  assert.equal(d.tradesOpened, 2);
+  assert.equal(d.tradesClosed, 2);
+  assert.equal(d.realizedPnl, 0);
+  e.seed([...trades, t('i3', '2026-03-02 09:55', '2026-03-02 09:58', -1)], at('2026-03-02 10:02'));
+  assert.equal(e.snapshot(at('2026-03-02 10:02')).day.tradesOpened, 3, 'a new trade in a re-import still counts');
+});

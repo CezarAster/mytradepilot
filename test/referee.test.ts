@@ -363,3 +363,153 @@ test('fix: the HTTP API refuses a foreign Host, a localhost page on another port
   await http.close();
   await referee.stop();
 });
+
+test('fix: today\'s backfilled fills are judged: an open trade is enforced, a closed one is reported, and the stream reconnects', async () => {
+  clock = Date.parse('2026-10-21T14:00:00Z');
+  const { referee } = await makeReferee();
+  await settle(); // let the first-live sync finish
+  // The stream missed all of this. PPP (300 x $50, over the $10,000 cap) is still open; QQQ (same size) already closed.
+  fake.fills.push(activity('p-in', 'PPP', 'buy', 300, 50, clock - 10 * 60000), activity('q-in', 'QQQ', 'buy', 300, 50, clock - 9 * 60000), activity('q-out', 'QQQ', 'sell', 300, 50, clock - 8 * 60000));
+  fake.positions = [position('PPP', 300, 50)];
+  fake.calls = [];
+  await referee.reconcile('periodic');
+  await settle();
+  const late = referee.state().todayBreaches.filter((b) => b.rule === 'maxPositionDollars');
+  assert.deepEqual(late.map((b) => b.symbol).sort(), ['PPP', 'QQQ'], 'both stored, though older than 5 minutes');
+  assert.ok(late.every((b) => b.message.startsWith('(seen late)')));
+  assert.ok(fake.calls.includes('DELETE /v2/positions/PPP'), `open trade closed: ${fake.calls.join(', ')}`);
+  assert.ok(!fake.calls.includes('DELETE /v2/positions/QQQ'), 'closed trade left alone');
+  assert.deepEqual(FakeStream.current!.reconnects.length, 1, 'a live stream that missed fills is reconnected');
+  await referee.stop();
+});
+
+test('fix: a position Alpaca and our fills disagree on triggers a sync, at most once a minute', async () => {
+  clock = Date.parse('2026-10-22T14:00:00Z');
+  const { referee } = await makeReferee({ dryRun: true });
+  await settle(); // let the first-live sync finish
+  fake.positions = [position('RRR', 10, 10)]; // no fill explains it
+  const syncs = () => fake.calls.filter((c) => c === 'GET /v2/account/activities/FILL').length;
+  fake.calls = [];
+  clock += 31000;
+  await tick(referee);
+  await settle();
+  assert.equal(syncs(), 1, 'drift synced');
+  clock += 31000;
+  await tick(referee);
+  await settle();
+  assert.equal(syncs(), 1, 'not again within a minute');
+  clock += 31000;
+  await tick(referee);
+  await settle();
+  assert.equal(syncs(), 2);
+  fake.positions = [];
+  await referee.stop();
+});
+
+test('fix: re-importing a CSV does not recount today\'s trades, and a restart keeps the imported count', async () => {
+  clock = Date.parse('2026-10-23T14:00:00Z'); // Friday 10:00 ET
+  const csv = 'Symbol,Side,Qty,Price,Time\nIMP,Buy,10,10,2026-10-23 09:35\nIMP,Sell,10,11,2026-10-23 09:40\nIMQ,Buy,10,10,2026-10-23 09:45\nIMQ,Sell,10,9,2026-10-23 09:50\n';
+  let { referee } = await makeReferee({ dryRun: true });
+  referee.importCsv({ fileName: 'today.csv', timeZone: 'America/New_York', text: csv });
+  assert.equal(referee.state().snapshot.day.tradesOpened, 2);
+  referee.importCsv({ fileName: 'today.csv', timeZone: 'America/New_York', text: csv });
+  assert.equal(referee.state().snapshot.day.tradesOpened, 2, 're-import adds nothing');
+  await referee.stop();
+  ({ referee } = await makeReferee({ dryRun: true }));
+  const day = referee.state().snapshot.day;
+  assert.equal(day.tradesOpened, 2, 'survives a restart');
+  assert.equal(day.realizedPnl, 0);
+  await referee.stop();
+});
+
+test('fix: a database that refuses writes does not stop a flatten, and the kill switch works without config.json', async () => {
+  clock = Date.parse('2026-10-26T14:00:00Z');
+  const { referee, config } = await makeReferee();
+  const store = (referee as unknown as { store: Record<string, unknown> }).store;
+  for (const m of ['insertBreach', 'insertAction', 'setKv', 'setTradeMeta', 'insertFill', 'upsertOrder']) store[m] = () => { throw new Error('disk full'); };
+  fake.positions = [position('SSS', 300, 50)];
+  fake.calls = [];
+  const entry = fillUpdate('s-in', 'SSS', 'buy', 300, 50);
+  FakeStream.current!.push(entry);
+  await settle();
+  assert.ok(fake.calls.includes('DELETE /v2/positions/SSS'), `flattened without a database: ${fake.calls.join(', ')}`);
+  FakeStream.current!.push(entry); // a redelivery is still a duplicate
+  assert.equal(referee.state().snapshot.day.tradesOpened, 1);
+
+  (config as unknown as { file: string }).file = join(dir, 'no-such-folder', 'config.json');
+  const k = referee.kill();
+  assert.equal(k.enabled, false);
+  assert.equal(config.get().enforcement.enabled, false, 'off in memory though the file write failed');
+  fake.calls = [];
+  fake.positions = [position('SST', 300, 50)];
+  FakeStream.current!.push(fillUpdate('t-in', 'SST', 'buy', 300, 50));
+  await settle();
+  assert.ok(!fake.calls.some((c) => c.startsWith('DELETE')), 'killed: nothing sent');
+  fake.positions = [];
+  await referee.stop();
+});
+
+test('fix: switching paper to live mid-sync never writes paper fills into the live database, and the live sync still runs', async () => {
+  clock = Date.parse('2026-10-27T14:00:00Z');
+  const fakeLive = new FakeAlpaca();
+  await fakeLive.start();
+  const d = mkdtempSync(join(tmpdir(), 'referee-switch-'));
+  const config = new ConfigStore(d);
+  config.update({ alpaca: creds, enforcement: { enabled: true, dryRun: true, killedAt: null } });
+  const referee = new Referee({
+    config,
+    log: new Logger(null, 'error'),
+    now,
+    timers: false,
+    clientFactory: (c) => {
+      const port = (c.mode === 'live' ? fakeLive : fake).port;
+      return new AlpacaClient(c, { tradingHost: `http://127.0.0.1:${port}`, dataHost: `http://127.0.0.1:${port}`, retries: 0 });
+    },
+    streamFactory: (_c, handlers) => new FakeStream(handlers) as unknown as TradeStream,
+    dbFile: (mode) => join(d, `t-${mode}.sqlite`),
+    sleep: () => Promise.resolve(),
+  });
+  await referee.start();
+  fake.fills.push(activity('paper-only', 'TTT', 'buy', 10, 10, clock - 60000));
+  let release!: () => void;
+  fake.holdFills = new Promise<void>((r) => (release = r));
+  const sync = referee.reconcile('test'); // paper sync, held at the fills request
+  await settle();
+  const switching = referee.updateSettings({ alpaca: { ...creds, mode: 'live' } });
+  await settle();
+  release();
+  await sync;
+  await switching;
+  await settle();
+  const st = referee.state();
+  assert.equal(st.status.counts.fills, 0, 'live database has no paper fill');
+  assert.ok(!st.snapshot.positions.some((p) => p.symbol === 'TTT'));
+  assert.ok(fakeLive.calls.includes('GET /v2/account/activities/FILL'), 'the live sync ran after the dropped one');
+  await referee.stop();
+  await fakeLive.stop();
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('fix: Retry-After is honoured: reads wait it out (capped), a long one on a close goes to the tick-loop retry', async () => {
+  const slept: number[] = [];
+  const client = new AlpacaClient(creds, { tradingHost: `http://127.0.0.1:${fake.port}`, retries: 2, sleep: async (ms) => void slept.push(ms) });
+  fake.rateLimitNext = { path: '/v2/account', retryAfter: '2' };
+  await client.getAccount();
+  fake.rateLimitNext = { path: '/v2/account', retryAfter: '120' };
+  await client.getAccount();
+  assert.deepEqual(slept, [2000, 30000]);
+
+  clock = Date.parse('2026-10-28T14:00:00Z');
+  const { referee } = await makeReferee();
+  fake.positions = [position('UUU', 300, 50)];
+  fake.rateLimitNext = { path: '/v2/positions/UUU', retryAfter: '30' };
+  FakeStream.current!.push(fillUpdate('u-in', 'UUU', 'buy', 300, 50));
+  await settle();
+  assert.equal(fake.positions.length, 1, 'not hammered in-line');
+  assert.ok(referee.state().recentActions.some((a) => a.kind === 'error' && a.symbol === 'UUU' && /Retrying in 30 s/.test(a.detail)));
+  clock += 31000;
+  await tick(referee);
+  assert.equal(fake.positions.length, 0, 'closed once the limit reset');
+  await settle();
+  await referee.stop();
+});

@@ -14,6 +14,10 @@ export class FakeAlpaca {
   failNext: string | null = null;
   /** Fail this many close-position calls with a 500. */
   failClose = 0;
+  /** Answer the next request to this path with 429 and this Retry-After value. */
+  rateLimitNext: { path: string; retryAfter: string } | null = null;
+  /** While set, the fills endpoint waits for it before answering (to hold a sync mid-flight). */
+  holdFills: Promise<void> | null = null;
   /** Symbols close-all refuses (Alpaca still answers 207, with a 403 entry for each). */
   refuseCloseAll = new Set<string>();
 
@@ -26,6 +30,11 @@ export class FakeAlpaca {
         res.end(JSON.stringify(body));
       };
       if (req.headers['apca-api-key-id'] !== 'KEYKEYKEY') return json(401, { message: 'unauthorized' });
+      if (this.rateLimitNext?.path === url.pathname) {
+        res.writeHead(429, { 'content-type': 'application/json', 'retry-after': this.rateLimitNext.retryAfter });
+        this.rateLimitNext = null;
+        return res.end(JSON.stringify({ message: 'too many requests' }));
+      }
       if (this.failNext === url.pathname) {
         this.failNext = null;
         return json(500, { message: 'boom' });
@@ -73,6 +82,12 @@ export class FakeAlpaca {
         res.writeHead(204);
         return res.end();
       }
+      if (url.pathname === '/v2/account/activities/FILL' && this.holdFills) {
+        const hold = this.holdFills;
+        this.holdFills = null;
+        this.calls.pop(); // logged again when it is answered
+        return void hold.then(() => this.server.emit('request', req, res));
+      }
       if (url.pathname === '/v2/account/activities/FILL') {
         const after = url.searchParams.get('after');
         const token = url.searchParams.get('page_token');
@@ -111,6 +126,10 @@ export class FakeStream {
   }
   getStatus(): StreamStatus {
     return this.status;
+  }
+  reconnects: string[] = [];
+  reconnect(reason: string): void {
+    this.reconnects.push(reason);
   }
   push(u: AlpacaTradeUpdate): void {
     this.handlers.onUpdate(u);

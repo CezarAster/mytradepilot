@@ -106,9 +106,14 @@ export class ConfigStore {
     return this.current;
   }
 
-  /** Validate, write atomically with owner-only permissions, and swap in. */
-  update(patch: Partial<Config>): Config {
+  /**
+   * Validate, write atomically with owner-only permissions, and swap in. With `memoryFirst` the new config takes
+   * effect before the write, so a failed write (thrown) still leaves it in force until restart: for switches such as
+   * the kill switch, which must work with a full disk.
+   */
+  update(patch: Partial<Config>, opts: { memoryFirst?: boolean } = {}): Config {
     const next = ConfigSchema.parse({ ...this.current, ...patch });
+    if (opts.memoryFirst) this.current = next;
     const tmp = `${this.file}.tmp`;
     writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
     try {

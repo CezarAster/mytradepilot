@@ -17,7 +17,14 @@ export interface StreamOptions {
   WebSocketImpl?: typeof WebSocket;
   minBackoffMs?: number;
   maxBackoffMs?: number;
+  /**
+   * Reconnect after this long with no message. Alpaca sends nothing on a quiet account, so this costs a reconnect
+   * (and a backfill) per quiet stretch; in exchange a socket that silently stopped delivering cannot read "live" for long.
+   */
+  idleTimeoutMs?: number;
 }
+
+export const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60000;
 
 export class TradeStream {
   private ws: WebSocket | null = null;
@@ -25,6 +32,8 @@ export class TradeStream {
   private stopped = true;
   private attempts = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly idleTimeout: number;
   private readonly url: string;
   private readonly WS: typeof WebSocket;
   private readonly minBackoff: number;
@@ -40,6 +49,7 @@ export class TradeStream {
     this.WS = opts.WebSocketImpl ?? WebSocket;
     this.minBackoff = opts.minBackoffMs ?? 1000;
     this.maxBackoff = opts.maxBackoffMs ?? 60000;
+    this.idleTimeout = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   }
 
   getStatus(): StreamStatus {
@@ -55,14 +65,39 @@ export class TradeStream {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.clearIdle();
     this.set('stopped');
+    this.drop();
+  }
+
+  /** Drop the socket and connect again: for an idle socket, or when the owner sees fills the stream never sent. */
+  reconnect(reason: string): void {
+    if (this.stopped) return;
+    this.clearIdle();
+    this.drop();
+    this.attempts = 0;
+    this.scheduleReconnect(reason, this.minBackoff);
+  }
+
+  private drop(): void {
     const ws = this.ws;
-    this.ws = null;
+    this.ws = null; // its close event is ignored from here on
     try {
       ws?.close();
     } catch {
       // already closed
     }
+  }
+
+  private clearIdle(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+  }
+
+  private armIdle(): void {
+    this.clearIdle();
+    if (this.stopped || this.idleTimeout <= 0) return;
+    this.idleTimer = setTimeout(() => this.reconnect(`no message for ${Math.round(this.idleTimeout / 1000)}s`), this.idleTimeout);
   }
 
   private set(s: StreamStatus, detail?: string): void {
@@ -84,6 +119,7 @@ export class TradeStream {
     this.ws = ws;
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
+      this.armIdle(); // an auth reply that never comes counts as idle too
       this.set('authenticating');
       ws.send(JSON.stringify({ action: 'auth', key: this.creds.keyId, secret: this.creds.secretKey }));
     };
@@ -95,6 +131,7 @@ export class TradeStream {
     ws.onclose = (ev: CloseEvent) => {
       if (this.ws !== ws) return;
       this.ws = null;
+      this.clearIdle();
       if (this.status === 'unauthorized') {
         // Bad keys: do not hammer the API. Try again slowly in case they were just rotated.
         this.scheduleReconnect(`closed ${ev.code}`, this.maxBackoff);
@@ -105,6 +142,8 @@ export class TradeStream {
   }
 
   private onMessage(ws: WebSocket, raw: unknown): void {
+    if (this.ws !== ws) return;
+    this.armIdle();
     let text: string;
     if (typeof raw === 'string') text = raw;
     else if (raw instanceof ArrayBuffer) text = new TextDecoder().decode(raw);

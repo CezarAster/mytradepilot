@@ -55,7 +55,7 @@ On Windows, `npm install` builds `better-sqlite3`. It uses a prebuilt binary for
 - **Service**, in `src/server/`: SQLite store, backfill on start, live stream, marks, enforcement with dry run and a kill switch, an HTTP API with server-sent events bound to 127.0.0.1, and desktop plus Discord or Telegram notifications.
 - **UI**, in `app/`: Today, Rules, Record (with CSV import), Setup (strategy and setup check), Settings, Log, and Ask Claude.
 - **MCP server**, in `src/mcp/`: next-trade state, rules, record, today, trades, breaches, strategy, setup check, and declare.
-- **Tests**: 61 tests (`npm test`) cover the engine, strategy, the service against a fake Alpaca, and an MCP round trip. A Playwright UI smoke test lives in `scripts/ui-smoke.cjs`.
+- **Tests**: 69 tests (`npm test`) cover the engine, strategy, the service against a fake Alpaca, and an MCP round trip. A Playwright UI smoke test lives in `scripts/ui-smoke.cjs`.
 - **Review fixes**: an adversarial review found 24 problems. These are fixed:
   - Saving settings no longer flattens protected positions or drops the lock.
   - Out-of-order backfill now rebuilds in time order.
@@ -69,21 +69,16 @@ On Windows, `npm install` builds `better-sqlite3`. It uses a prebuilt binary for
   - Unrealized P&L is recomputed after every fill, so a losing exit no longer counts twice against the daily loss limit.
   - Partial exits book their P&L (fees included) at once. The close books only the rest.
   - A position the Referee is closing gets no stopRequired breach. If the Referee gives up closing it, the check applies again.
+- **Findings 6 to 11** (fixed 2026-10-14, tests marked `fix:` in `test/engine-live.test.ts`, `test/referee.test.ts` and `test/stream.test.ts`):
+  - 6 and 7: every backfilled fill from today runs as `late`, whatever its age. Its breaches are stored as "(seen late)" and notified. A flatten breach is enforced if its trade is still open after the whole backfill is applied. Position drift (a symbol or share count that Alpaca and the fills disagree on) triggers `reconcile('drift')`, at most once a minute. The stream reconnects after 10 minutes without a message, and at once when a sync finds fills older than 30 seconds that it never delivered.
+  - 8: a re-import counts only trades not seen before, and the rebuild seeds imports after the fill replay.
+  - 9: database writes on the enforcement path are wrapped, so a failed write is logged and the flatten goes ahead. A fill the database refuses is still refereed. Enforcement switches take effect in memory before `config.json` is written.
+  - 10: a sync that sees the account change mid-flight stops without writing and runs again for the new account. A sync asked for while one runs now runs after it instead of being dropped.
+  - 11: reads wait out Retry-After (capped at 30 seconds). A close waits in-line only up to 5 seconds; a longer Retry-After goes to the tick-loop retry, scheduled no sooner than Alpaca asked.
 
-## Open review findings: fix these before live enforcement
+## Open review findings
 
-Findings 1 to 5 are fixed (see above). The numbers below keep the original numbering.
-
-Ordered by risk. Paper trading in dry run is safe with these open.
-
-| # | Problem | Where | Fix |
-| --- | --- | --- | --- |
-| 6 | Fills found only by backfill are never enforced. Position drift is detected every 5 seconds but only logged. A stream that silently stops delivering still reads "live" | `src/server/referee.ts` `doReconcile`, `refreshPositions`; `src/alpaca/stream.ts` | Use mode `late` for every backfilled fill and enforce while the position is still open. On drift, call `reconcile('drift')`, rate-limited. Add an idle timeout so the stream reconnects. |
-| 7 | Backfilled fills older than 5 minutes run as `history`: their breaches are counted toward the lock but never stored or notified | `src/server/referee.ts` `doReconcile` | Same fix as #6. |
-| 8 | Re-importing a CSV recounts today's trades, and a restart loses the seeded count | `src/engine/live.ts` `seed`, `src/server/referee.ts` `rebuildEngine` | Count only newly added trades. Seed after the fill replay. |
-| 9 | A SQLite or config write failure aborts the flatten and disables the kill switch | `src/server/referee.ts` `onBreach`, `kill`, `setEnforcement` | Wrap persistence in try/catch and flatten first. Update in-memory enforcement before the file write. |
-| 10 | Switching paper to live during a reconcile can write paper fills into the live database | `src/server/referee.ts` `doReconcile`, `updateSettings` | Capture the store and engine at the start of `doReconcile` and bail out if they changed. Re-run a coalesced reconcile instead of dropping it. |
-| 11 | Retries do not honour Retry-After on HTTP 429 | `src/alpaca/client.ts` `request` | Honour Retry-After, and give the flatten path its own bounded retry. |
+All 11 findings from the review are fixed (see above). Live enforcement still waits on step 2 below: a paper session in dry run.
 
 ## One thing to reconcile
 
@@ -94,7 +89,7 @@ The website describes the Referee as a Topstep Combine pilot that holds rules on
 1. ~~Fix findings 1 to 5 and add a test for each.~~ Done 2026-10-14.
 2. Run a paper session with Dad in dry run. Read the breaches and the log at `~/.mytradepilot/logs/`, and fix what looks wrong.
 3. Check Windows end to end: desktop notifications (a PowerShell toast, untested), the `better-sqlite3` install, and `npm start` from a fresh clone.
-4. Fix findings 6 to 11.
+4. ~~Fix findings 6 to 11.~~ Done 2026-10-14.
 5. Put Dad's written strategy into the Setup page and tune `DEFAULT_STRATEGY` in `src/server/api.ts` if the defaults are wrong.
 6. Before the late December launch, decide how waitlist users install it: a signed Windows and Mac installer, or the npm steps above.
 

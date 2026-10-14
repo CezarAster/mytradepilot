@@ -141,10 +141,22 @@ export interface AlpacaSnapshot {
 export class AlpacaError extends Error {
   readonly status: number;
   readonly body: string;
-  constructor(status: number, body: string, message?: string) {
+  /** From a Retry-After header (429/503), in ms; null when absent or unreadable. */
+  readonly retryAfterMs: number | null;
+  constructor(status: number, body: string, message?: string, retryAfterMs: number | null = null) {
     super(message ?? `Alpaca ${status}: ${body.slice(0, 300)}`);
     this.name = 'AlpacaError';
     this.status = status;
     this.body = body;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/** Retry-After is either seconds or an HTTP date. */
+export function parseRetryAfter(value: string | null, now = Date.now()): number | null {
+  if (!value) return null;
+  const v = value.trim();
+  if (/^\d+(\.\d+)?$/.test(v)) return Math.round(Number(v) * 1000);
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? Math.max(0, t - now) : null;
 }

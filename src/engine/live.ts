@@ -95,19 +95,24 @@ export class LiveEngine {
     this.rules = structuredClone(rules);
   }
 
-  /** Closed trades from other sources (CSV imports). Today's ones also count toward today's limits. */
+  /**
+   * Closed trades from other sources (CSV imports). Today's ones also count toward today's limits, once: a trade
+   * already known (a re-import) is not counted again. Seed after replaying fills, which roll the day as they go.
+   */
   seed(trades: Trade[], now: number): void {
     const closed = trades.filter((t) => t.exitTime !== null).sort((a, b) => a.entryTime.getTime() - b.entryTime.getTime());
     const known = new Set(this.history.map((t) => t.key));
+    const added: Trade[] = [];
     for (const t of closed) {
       if (known.has(t.key)) continue;
       this.history.push(t);
       known.add(t.key);
+      added.push(t);
     }
     this.historyDirty = true;
     this.rollDay(now);
     const today = marketClock(new Date(now)).date;
-    for (const t of closed) {
+    for (const t of added) {
       if (marketClock(t.entryTime).date !== today) continue;
       this.day.tradesOpened++;
       this.countClosed(t);
@@ -130,7 +135,7 @@ export class LiveEngine {
 
   private refreshRecord(): void {
     if (!this.historyDirty) return;
-    this.record.set(this.history);
+    this.record.set(this.closedTrades()); // time order, whichever source arrived first
     this.historyDirty = false;
   }
 

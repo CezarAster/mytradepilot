@@ -27,6 +27,10 @@ The engine (`src/engine/live.ts`) is deterministic: the same fills in the same o
 
 Fills carry a stable key, `orderId|cumQty`, so the same execution seen on the stream and in the activities backfill is stored once.
 
+Today's fills that only the backfill found (the stream missed them) are judged like live ones: their breaches are stored as "seen late" and notified, and enforced if the trade is still open once the whole backfill is in. Older days only rebuild history. A position Alpaca and the fills disagree on triggers a sync (at most once a minute). The stream reconnects after 10 minutes without a message, and at once when a sync finds fills it never delivered.
+
+A database or config write that fails is logged and skipped: it never stops a flatten, a notification or the kill switch. The kill switch takes effect in memory even when `config.json` cannot be written (it then reverts on restart, and says so in the log).
+
 ## What "pre-trade" means here
 
 No retail broker exposes a hook that lets a third party veto an order before it is accepted, and momentum entries are market orders that fill in milliseconds. So the Referee does two things:
@@ -67,4 +71,4 @@ No retail broker exposes a hook that lets a third party veto an order before it 
 
 ## Testing
 
-`npm test` runs: parser and analysis tests, engine scenarios for every rule, matcher parity against the batch parser, strategy indicators, an end-to-end service test against a fake Alpaca HTTP server and a hand-driven stream (backfill, live breach, flatten, restart replay, dry run, kill switch, HTTP API, SSE, cross-origin refusal), and an MCP client round-trip over stdio.
+`npm test` runs: parser and analysis tests, engine scenarios for every rule, matcher parity against the batch parser, strategy indicators, an end-to-end service test against a fake Alpaca HTTP server and a hand-driven stream (backfill and late enforcement, live breach, flatten and close-all, restart replay, dry run, kill switch, HTTP API, SSE, Host and origin refusal, database failures, an account switch mid-sync, Retry-After), the stream's idle reconnect against a fake WebSocket, and an MCP client round-trip over stdio.
