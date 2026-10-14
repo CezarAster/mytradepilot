@@ -14,6 +14,17 @@ export class FakeAlpaca {
   failNext: string | null = null;
   /** Fail this many close-position calls with a 500. */
   failClose = 0;
+  /** Symbols whose entry in a close-all answer fails. */
+  failCloseAll: string[] = [];
+  /**
+   * Answer this method + path with 429, `times` times, asking for a wait of `seconds`: with a Retry-After header, or
+   * the way Alpaca documents it, X-RateLimit-Remaining 0 and X-RateLimit-Reset in epoch seconds (style 'reset').
+   */
+  rateLimit: { method: string; path: string; seconds: number; times: number; style?: 'retry-after' | 'reset' } | null = null;
+  /** While set, the fills endpoint answers only once it resolves (with the fills as they were when asked). */
+  holdFills: Promise<void> | null = null;
+  /** Bodies posted to /hook, the generic webhook. */
+  hooks: { title: string; body: string }[] = [];
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -23,7 +34,26 @@ export class FakeAlpaca {
         res.writeHead(code, { 'content-type': 'application/json' });
         res.end(JSON.stringify(body));
       };
+      if (url.pathname === '/hook' && req.method === 'POST') {
+        let text = '';
+        req.on('data', (c: Buffer) => (text += c));
+        req.on('end', () => {
+          this.hooks.push(JSON.parse(text));
+          json(200, { ok: true });
+        });
+        return;
+      }
       if (req.headers['apca-api-key-id'] !== 'KEYKEYKEY') return json(401, { message: 'unauthorized' });
+      const rl = this.rateLimit;
+      if (rl && rl.times > 0 && rl.method === req.method && rl.path === url.pathname) {
+        rl.times--;
+        const headers: Record<string, string> =
+          rl.style === 'reset'
+            ? { 'x-ratelimit-limit': '200', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000 + rl.seconds)) }
+            : { 'retry-after': String(rl.seconds) };
+        res.writeHead(429, { 'content-type': 'application/json', ...headers });
+        return res.end(JSON.stringify({ message: 'too many requests' }));
+      }
       if (this.failNext === url.pathname) {
         this.failNext = null;
         return json(500, { message: 'boom' });
@@ -32,8 +62,15 @@ export class FakeAlpaca {
       if (url.pathname === '/v2/clock') return json(200, { timestamp: new Date().toISOString(), is_open: true, next_open: '', next_close: '' });
       if (url.pathname === '/v2/positions' && req.method === 'GET') return json(200, this.positions);
       if (url.pathname === '/v2/positions' && req.method === 'DELETE') {
-        this.positions = [];
-        return json(207, []);
+        // Like Alpaca: 207 Multi-Status, one entry per position, each with its own status.
+        const out = this.positions.map((p) =>
+          this.failCloseAll.includes(p.symbol)
+            ? { symbol: p.symbol, status: 403, body: { code: 40310000, message: 'insufficient qty available for order' } }
+            : { symbol: p.symbol, status: 200, body: { id: 'close-' + p.symbol, symbol: p.symbol, status: 'accepted' } },
+        );
+        this.positions = this.positions.filter((p) => this.failCloseAll.includes(p.symbol));
+        this.openOrders = [];
+        return json(207, out);
       }
       // Like Alpaca: bracket legs nest under their parent with nested=true; a cancel completes asynchronously
       // (listed once as pending_cancel); a close is refused while any order on the symbol holds the shares.
@@ -71,6 +108,7 @@ export class FakeAlpaca {
         const token = url.searchParams.get('page_token');
         let list = this.fills.filter((f) => !after || f.transaction_time > after);
         if (token) list = list.slice(list.findIndex((f) => f.id === token) + 1);
+        if (this.holdFills) return void this.holdFills.then(() => json(200, list.slice(0, 100)));
         return json(200, list.slice(0, 100));
       }
       if (url.pathname.includes('/v2/stocks/')) return json(200, { bars: [], next_page_token: null });
@@ -88,11 +126,13 @@ export class FakeAlpaca {
 // ---- a fake stream the test drives by hand ----
 export class FakeStream {
   static current: FakeStream | null = null;
+  static all: FakeStream[] = [];
   status: StreamStatus = 'stopped';
   handlers: StreamHandlers;
   constructor(handlers: StreamHandlers) {
     this.handlers = handlers;
     FakeStream.current = this;
+    FakeStream.all.push(this);
   }
   start(): void {
     this.status = 'live';

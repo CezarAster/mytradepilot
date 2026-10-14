@@ -64,9 +64,62 @@ On Windows, `npm install` builds `better-sqlite3`. It uses a prebuilt binary for
   - Stale working orders are closed out on reconcile.
   - Replays keep the declared flag.
 
-## Open review findings: fix these before live enforcement
+## Review findings 1 to 5: fixed (2026-10-13)
 
-Ordered by risk. Paper trading in dry run is safe with these open.
+Each has a test that fails on the old code (`test/engine-live.test.ts` and `test/referee.test.ts`, the ones named "fix: ...").
+
+1. The API checks Host and Origin against `127.0.0.1:<port>`, `localhost:<port>` and the Vite dev port 5174, and refuses non-GET requests without `content-type: application/json` (415). The UI and the MCP server always send it.
+2. Close-all parses Alpaca's 207 answer. A symbol that failed gets an error action, a notification, a queued retry, and its `refereeClosed` mark removed.
+3. Unrealized P&L is recomputed at the end of every fill.
+4. Partial exits book realized P&L as they fill (`OpenPosition.bookedPnl`); the close trues the day up to the trade's own P&L.
+5. A position the Referee is closing is skipped by the stop check and by `positionsAwaitingStop`.
+
+Also fixed: `scripts/ui-smoke.cjs` never imported `chromium`. Run it in a cloud session with `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
+
+## Review findings 6 to 11: fixed (2026-10-13)
+
+Tests: `test/referee-sync.test.ts` and `test/alpaca.test.ts`. Each fails on the old code.
+
+6. A backfilled fill dated today runs as `late`. Its breaches are stored (marked "(seen late)"), notified, and enforced if that same trade is still open. The decision waits until the whole backfill batch is applied, so a later fill in the batch that closed the trade, or a newer trade in the same symbol, is never touched. When Alpaca's positions and our fills disagree, `reconcile('drift')` runs, at most once a minute. While live, the stream re-sends `listen` every 30 s as a heartbeat (Alpaca answers `listening`). After 75 s with no message at all, it drops the socket and reconnects, and the reconnect syncs.
+7. Same mechanism, with no 5-minute cut-off. The out-of-order path that rebuilds the engine handles today's backfilled fills the same way. It doesn't save day state or announce a lock mid-replay; afterwards, today's breach count is the saved count plus the late ones.
+8. `seed` counts only trades it didn't already hold, and `rebuildEngine` seeds after replaying fills.
+9. Database writes on enforcement paths go through `safeWrite`, so a failure is logged once a minute, reported to the trader once an hour, and enforcement carries on. `onBreach` starts the flatten before it writes the breach. A fill the database refuses is still applied, kept in memory, and written on the next sync. The kill switch and the enforcement toggle change the setting in memory before writing `config.json`. If the write fails, an error action says the old setting returns after a restart.
+10. `doReconcile` remembers the client, store and engine it started with, and stops if any change while it waits on Alpaca. `reconcile()` coalesces requests made during a run into one more run, and the promise it returns covers that run. A replaced stream's handlers are ignored.
+11. The client reads `Retry-After` (seconds or a date) and Alpaca's `X-RateLimit-Reset`. GETs wait it out up to 10 s, or fail at once with `AlpacaError.retryAfterMs`. A close waits it out in line up to 5 s; the retry queue never retries sooner than Alpaca asked.
+
+### The review of those fixes
+
+A second review ran five reviewers, each paired with a skeptic who tried to refute every finding. 21 findings survived, and all are fixed, each with a test in the same two files plus one in `test/engine-live.test.ts`:
+
+- **Account switches.** Changing keys or paper/live drops queued close retries and in-flight state. A close queued on paper can no longer close a live position. Fills the paper database refused are not written into the live one. Each retry remembers its account, and a flatten that sees the account change mid-way stops. Two quick Settings saves leave one stream, not two.
+- **The retry queue** only retries the same trade. If that trade closed and a new one opened in the symbol, the new one is left alone. The kill switch and dry run now also drop closes already queued, which used to run anyway.
+- **Close-all** (the daily loss limit) that Alpaca refuses as a whole is retried symbol by symbol, after `Retry-After`. The positions are no longer left marked as "being closed by the Referee", which used to hide them from the stop rule.
+- **Out-of-order rebuild** replays in this order: earlier days, today's imports, the saved lock (which now records when it started), then today's fills. Every breach found from the earliest missed fill on that isn't already stored is handled as seen late, including one the missed fill pushes onto a later fill (trade 3 of 2 becomes trade 4). The trade number recorded live is kept.
+- **The loss streak** is recounted in exit order after imports and replays, so seeding before or after replaying gives the same cooldowns.
+- **A locked database** no longer stalls the service. SQLite's busy timeout is 100 ms (it was 5 s). After a failed write, writes pause for 10 s and fills wait in memory.
+- **Rate limits.** A wait of 0 or a malformed header falls back to normal backoff. While Alpaca is rate-limiting us, the position and sync polling waits instead of asking every tick. The fake Alpaca can now answer the way Alpaca documents it (`X-RateLimit-Reset`).
+- **Tests** poll for outcomes instead of sleeping a fixed time; `test/referee.test.ts` got the same treatment. 12 copies in parallel on a loaded 4-core machine all pass.
+
+### The second review
+
+A second review of those fixes (three reviewers, three skeptics) found 14 more problems in them, and 13 are fixed, each with a test that fails on the code before (`test/referee-sync.test.ts`, "review 2"; plus `test/alpaca.test.ts`):
+
+- **The out-of-order rebuild** no longer guesses which breaches are new from the stored rows. It replays today twice, with and without the missed fills, and only breaches that differ are new. Imports are seeded at the moment they were made, so a restart after a mid-day import keeps the live trade numbers. The saved day state (merged with what the running engine knew) wins over the replay for the lock and the breach count. The fill that set off a lock is not judged locked on a replay. A rule turned on mid-day is not applied to older trades. Trades after a missed fill get their new numbers.
+- **Failed writes** are queued and made in order once the database works again, and an unsaved day state is saved again, so a lock set while writes were paused survives a restart.
+- **Closes:**
+  - Queued closes are keyed by trade, not symbol, so a stale close never deletes a newer trade's.
+  - The kill switch is read before every send, so a drain or an in-line retry stops at once.
+  - A close the Referee gives up on hands the position back to the stop rule.
+  - The trader's own close keeps its retry when the kill switch is pressed.
+  - A queued close follows its trade when a rebuild changes the trade's key.
+- **Rate limits:** a 429 pauses polling for at most a minute (Alpaca's window), and holds only the stop check it could not confirm; the tick, its other rules and queued closes go on.
+- **Test:** the heartbeat test again proves an answered socket is kept past the idle timeout.
+
+Known, not fixed (low severity): when a missed breach means the day locked earlier than the saved lock says, entries between the true start and the saved start are not judged as locked. Fixing it needs another replay pass with the lock start moved; see the second review's U9.
+
+## The original review findings (all fixed)
+
+Kept for reference.
 
 | # | Problem | Where | Fix |
 | --- | --- | --- | --- |
@@ -82,16 +135,36 @@ Ordered by risk. Paper trading in dry run is safe with these open.
 | 10 | Switching paper to live during a reconcile can write paper fills into the live database | `src/server/referee.ts` `doReconcile`, `updateSettings` | Capture the store and engine at the start of `doReconcile` and bail out if they changed. Re-run a coalesced reconcile instead of dropping it. |
 | 11 | Retries do not honour Retry-After on HTTP 429 | `src/alpaca/client.ts` `request` | Honour Retry-After, and give the flatten path its own bounded retry. |
 
-## One thing to reconcile
+## Site and app: reconciled for Alpaca (2026-10-13)
 
-The website describes the Referee as a Topstep Combine pilot that holds rules on TopstepX through the ProjectX API, priced at $19 a month. The app built in this repo connects to **Alpaca for US stocks**, not Topstep. Dad chose to change only the dates on the site for now. Decide which way it goes, then align the other: either rewrite the site copy (and `docs/website-content-spec-referee.md`) for Alpaca, or add a ProjectX/TopstepX connection to the app.
+The site used to describe the Referee as a Topstep Combine pilot holding rules on TopstepX through the ProjectX API. We chose to align the site with the app, so the copy now says what the app does. `index.html`, `docs/website-content-spec-referee.md`, the README and the draft rules' "Held by" lines are rewritten:
+
+- Alpaca, US stocks, paper accounts first; pilot late December 2026.
+- The app runs on the trader's computer, with no MyTradePilot server.
+- The partner is a Discord or Telegram webhook, not a seat.
+- The daily loss limit is a Referee rule. The Referee's own lock for the rest of the day replaces Topstep's lockout.
+- Max trades is enforced by closing the extra fill, not by a broker-side limit.
+
+Left for a person to decide:
+
+- **Legal.** Section 8 of `docs/strategy-2026-10-10-referee.md` analyses the futures regime (CFTC CTA, Rule 4.14, NFA 2-29). US stocks fall under a different regime. The memo's questions need asking again for equities before anyone pays. The site still shows the hypothetical-results statement under every what-if figure; that was kept on purpose.
+- **Waitlist tags.** The platform select now sends `platform-alpaca`, `platform-ibkr`, `platform-schwab`, `platform-webull`, `platform-tradestation`, `platform-robinhood` and `platform-other`. Check that Buttondown accepts or creates these tags.
+- **Planned, not built.** The page now marks the Record Card, the private rules-kept score and the day card as planned (the roadmap's "Later" rung). The manual rule is gone from the page.
+- **Price.** $19 a month or $169 a year stays on the page; it is still undecided.
+
+A review of the rewritten copy (three reviewers, each paired with a skeptic) checked every claim against the app's code, the copy rules and the layout. Its 13 confirmed findings are fixed, and `docs/website-content-spec-referee.md` mirrors the page. Four questions came out of it, for a person:
+
+- **One fill, several breaches.** The old copy said "one fill is never two breaches". The engine logs a breach for each rule a fill breaks, and each one counts toward the lock, so one fill can lock the day. The page now says so. If the old convention (one breach per fill, against the later rule) is the product you want, it is a change to `src/engine/live.ts` `onOpen`.
+- **Declared size** is checked only against the opening fill of a trade declared with "I'm taking this". Adds and later partial fills are not checked. The page says "opening fill"; checking `onAdd` too would close the gap.
+- **After a restart**, only fills missed today are enforced. A close that was under way when the app stopped is not retried, and breaches already stored are not enforced again. The page says to check positions after a restart. Re-enforcing today's stored breaches whose trade is still open would remove that caveat.
+- **Alpaca's own behaviour** stated on the page needs checking against Alpaca's current docs: a market close outside regular hours waits for the open, and pattern-day-trader protection can refuse a close on a margin account under $25,000.
 
 ## Next steps, in order
 
-1. Fix findings 1 to 5 and add a test for each. Use the fake Alpaca in `test/helpers/fake-alpaca.ts` and the patterns at the end of `test/referee.test.ts`.
+1. ~~Fix findings 1 to 5 and add a test for each.~~ Done 2026-10-13.
 2. Run a paper session with Dad in dry run. Read the breaches and the log at `~/.mytradepilot/logs/`, and fix what looks wrong.
 3. Check Windows end to end: desktop notifications (a PowerShell toast, untested), the `better-sqlite3` install, and `npm start` from a fresh clone.
-4. Fix findings 6 to 11.
+4. ~~Fix findings 6 to 11.~~ Done 2026-10-13.
 5. Put Dad's written strategy into the Setup page and tune `DEFAULT_STRATEGY` in `src/server/api.ts` if the defaults are wrong.
 6. Before the late December launch, decide how waitlist users install it: a signed Windows and Mac installer, or the npm steps above.
 

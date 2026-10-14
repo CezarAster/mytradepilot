@@ -17,6 +17,10 @@ export interface StreamOptions {
   WebSocketImpl?: typeof WebSocket;
   minBackoffMs?: number;
   maxBackoffMs?: number;
+  /** While live, re-send "listen" this often; Alpaca answers with a "listening" message, which proves the socket. */
+  heartbeatMs?: number;
+  /** No message at all for this long while live: the socket is dead even if it never closed. Reconnect. */
+  idleTimeoutMs?: number;
 }
 
 export class TradeStream {
@@ -25,10 +29,15 @@ export class TradeStream {
   private stopped = true;
   private attempts = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private lastMessageAt = 0;
+  private listening = false;
   private readonly url: string;
   private readonly WS: typeof WebSocket;
   private readonly minBackoff: number;
   private readonly maxBackoff: number;
+  private readonly heartbeatMs: number;
+  private readonly idleTimeoutMs: number;
 
   private readonly creds: AlpacaCredentials;
   private readonly handlers: StreamHandlers;
@@ -40,6 +49,8 @@ export class TradeStream {
     this.WS = opts.WebSocketImpl ?? WebSocket;
     this.minBackoff = opts.minBackoffMs ?? 1000;
     this.maxBackoff = opts.maxBackoffMs ?? 60000;
+    this.heartbeatMs = opts.heartbeatMs ?? 30000;
+    this.idleTimeoutMs = opts.idleTimeoutMs ?? 75000;
   }
 
   getStatus(): StreamStatus {
@@ -55,6 +66,7 @@ export class TradeStream {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.stopHeartbeat();
     this.set('stopped');
     const ws = this.ws;
     this.ws = null;
@@ -82,6 +94,7 @@ export class TradeStream {
       return;
     }
     this.ws = ws;
+    this.listening = false;
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
       this.set('authenticating');
@@ -95,6 +108,7 @@ export class TradeStream {
     ws.onclose = (ev: CloseEvent) => {
       if (this.ws !== ws) return;
       this.ws = null;
+      this.stopHeartbeat();
       if (this.status === 'unauthorized') {
         // Bad keys: do not hammer the API. Try again slowly in case they were just rotated.
         this.scheduleReconnect(`closed ${ev.code}`, this.maxBackoff);
@@ -105,6 +119,8 @@ export class TradeStream {
   }
 
   private onMessage(ws: WebSocket, raw: unknown): void {
+    if (this.ws !== ws) return; // a socket we already gave up on
+    this.lastMessageAt = Date.now();
     let text: string;
     if (typeof raw === 'string') text = raw;
     else if (raw instanceof ArrayBuffer) text = new TextDecoder().decode(raw);
@@ -131,14 +147,48 @@ export class TradeStream {
       return;
     }
     if (msg.stream === 'listening') {
+      if (this.listening) return; // a heartbeat answer
+      this.listening = true;
       this.attempts = 0;
       this.set('live');
+      this.startHeartbeat(ws);
       this.handlers.onLive();
       return;
     }
     if (msg.stream === 'trade_updates' && data && typeof data === 'object' && 'event' in data && 'order' in data) {
       this.handlers.onUpdate(data as unknown as AlpacaTradeUpdate);
     }
+  }
+
+  private startHeartbeat(ws: WebSocket): void {
+    this.stopHeartbeat();
+    this.heartbeat = setInterval(() => {
+      if (this.ws !== ws) return this.stopHeartbeat();
+      const idle = Date.now() - this.lastMessageAt;
+      if (idle >= this.idleTimeoutMs) {
+        // Silent socket: treat as dead. Detach first so its late close event is ignored.
+        this.ws = null;
+        this.stopHeartbeat();
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+        this.scheduleReconnect(`no message for ${Math.round(idle / 1000)}s`);
+        return;
+      }
+      try {
+        ws.send(JSON.stringify({ action: 'listen', data: { streams: ['trade_updates'] } }));
+      } catch {
+        // the idle check above will catch a dead socket
+      }
+    }, this.heartbeatMs);
+    (this.heartbeat as { unref?: () => void }).unref?.();
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
   }
 
   private scheduleReconnect(detail: string, fixedDelay?: number): void {

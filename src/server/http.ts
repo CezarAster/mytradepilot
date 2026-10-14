@@ -21,6 +21,8 @@ const MIME: Record<string, string> = {
 };
 
 const MAX_BODY = 25 * 1024 * 1024;
+/** `npm run dev:app` (vite.app.config.ts): its proxy keeps the browser's Host header. */
+const DEV_PORT = 5174;
 
 type Handler = (req: IncomingMessage, res: ServerResponse, params: Record<string, string>, body: unknown) => Promise<unknown> | unknown;
 
@@ -44,6 +46,8 @@ export class RefereeHttp {
   private readonly referee: Referee;
   private readonly opts: HttpOptions;
   private server: Server | null = null;
+  /** The port actually listened on (opts.port may be 0). */
+  private port = 0;
   private sseClients = new Set<ServerResponse>();
   private unsubscribe: (() => void) | null = null;
 
@@ -106,7 +110,8 @@ export class RefereeHttp {
       this.server!.once('error', reject);
       this.server!.listen(this.opts.port, host, () => {
         const addr = this.server!.address();
-        resolvePort(typeof addr === 'object' && addr ? addr.port : this.opts.port);
+        this.port = typeof addr === 'object' && addr ? addr.port : this.opts.port;
+        resolvePort(this.port);
       });
     });
   }
@@ -130,18 +135,26 @@ export class RefereeHttp {
     }
   }
 
+  /**
+   * Host and Origin must name this service (or the Vite dev server on DEV_PORT) on loopback. Checking Host defeats
+   * DNS rebinding, where a hostile name resolves to 127.0.0.1 and the browser treats the page as same-origin.
+   */
   private sameOrigin(req: IncomingMessage): boolean {
+    const allowed = new Set([this.port, DEV_PORT].flatMap((p) => [`127.0.0.1:${p}`, `localhost:${p}`]));
+    if (!allowed.has((req.headers.host ?? '').toLowerCase())) return false;
     const origin = req.headers.origin;
-    if (!origin) return true; // same-origin fetches and curl send no Origin on GET; browsers send it on POST from our page too
+    if (!origin) return true; // same-origin GETs and curl send no Origin
     try {
       const o = new URL(origin);
-      const host = req.headers.host ?? '';
-      if (o.host === host) return true;
-      // Vite dev server on another port, same machine.
-      return (o.hostname === '127.0.0.1' || o.hostname === 'localhost') && (host.startsWith('127.0.0.1') || host.startsWith('localhost'));
+      return o.protocol === 'http:' && allowed.has(o.host.toLowerCase());
     } catch {
       return false;
     }
+  }
+
+  /** A JSON content type cannot be sent cross-site without a CORS preflight, which this server never answers. */
+  private isJson(req: IncomingMessage): boolean {
+    return /^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '');
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -151,6 +164,7 @@ export class RefereeHttp {
       if (path === '/api/events' && req.method === 'GET') return this.sse(req, res);
       if (path.startsWith('/api/')) {
         if (!this.sameOrigin(req)) return this.json(res, 403, { error: 'cross-origin request refused' });
+        if (req.method !== 'GET' && !this.isJson(req)) return this.json(res, 415, { error: 'content-type must be application/json' });
         const route = this.routes.find((r) => r.method === req.method && r.pattern.test(path));
         if (!route) return this.json(res, 404, { error: `no ${req.method} ${path}` });
         const m = route.pattern.exec(path)!;

@@ -559,7 +559,7 @@ html:not(.js) #files[hidden] { display: block; margin-top: 12px; font: 400 13px/
 .limits-list h3 { margin-top: 6px; font: 600 17px/1.35 var(--font-body); color: var(--text); }
 .limits-list p { margin-top: 6px; font-size: 15px; line-height: 1.55; color: var(--text-2); }
 
-/* pricing: free, the Referee, Topstep's key */
+/* pricing: free, the Referee, what you need */
 .pricing-grid { display: grid; grid-template-columns: 5fr 5fr minmax(230px, 2fr); gap: 16px; align-items: stretch; }
 .price-card { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
 .price-card.referee { border-color: var(--accent-soft); background: linear-gradient(180deg, rgba(91,156,255,.06), transparent 60%), var(--surface); box-shadow: 0 0 0 1px rgba(91,156,255,.35), 0 0 48px rgba(91,156,255,.10); }

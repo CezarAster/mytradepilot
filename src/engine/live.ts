@@ -67,7 +67,7 @@ export class LiveEngine {
   private historyDirty = true;
   private record: RecordBook;
   private day: DayState;
-  private lock: { until: number; reason: string } | null = null;
+  private lock: { until: number; reason: string; since?: number } | null = null;
   private cooldownUntil: number | null = null;
   private noReentryUntil: number | null = null;
   private noReentrySymbol: string | null = null;
@@ -95,23 +95,56 @@ export class LiveEngine {
     this.rules = structuredClone(rules);
   }
 
-  /** Closed trades from other sources (CSV imports). Today's ones also count toward today's limits. */
+  /**
+   * Closed trades from other sources (CSV imports). Today's ones also count toward today's limits, once: a trade
+   * the engine already holds (a re-import) is not counted again. Call it after replaying fills, which roll the day.
+   */
   seed(trades: Trade[], now: number): void {
-    const closed = trades.filter((t) => t.exitTime !== null).sort((a, b) => a.entryTime.getTime() - b.entryTime.getTime());
+    const closed = trades.filter((t) => t.exitTime !== null).sort((a, b) => a.exitTime!.getTime() - b.exitTime!.getTime());
     const known = new Set(this.history.map((t) => t.key));
+    const added: Trade[] = [];
     for (const t of closed) {
       if (known.has(t.key)) continue;
       this.history.push(t);
       known.add(t.key);
+      added.push(t);
     }
     this.historyDirty = true;
     this.rollDay(now);
     const today = marketClock(new Date(now)).date;
-    for (const t of closed) {
+    for (const t of added) {
       if (marketClock(t.entryTime).date !== today) continue;
       this.day.tradesOpened++;
       this.countClosed(t);
     }
+    this.recountStreak();
+  }
+
+  /**
+   * The loss streak and "what came before" depend on the order trades closed in, and imports can arrive after live
+   * trades that closed later. Recount them from today's closed trades in exit order, so any order of seeding and
+   * replaying gives the same state.
+   */
+  recountStreak(): void {
+    const today = this.day.date;
+    const closed = this.history.filter((t) => t.exitTime && marketClock(t.exitTime).date === today).sort((a, b) => a.exitTime!.getTime() - b.exitTime!.getTime());
+    let streak = 0;
+    let lastLoss: number | null = null;
+    for (const t of closed) {
+      if (t.pnl > 0) streak = 0;
+      else {
+        streak++;
+        lastLoss = t.exitTime!.getTime();
+      }
+    }
+    this.day.consecutiveLosses = streak;
+    this.day.lastLossExitAt = lastLoss;
+    this.lastTodayTrade = closed.at(-1) ?? null;
+  }
+
+  /** Apply a saved lock before replaying the day it covers, so entries after its start are judged as locked. */
+  restoreLock(lock: { until: number; reason: string; since?: number } | null, now: number): void {
+    if (lock && lock.since !== undefined && lock.until > now) this.lock = { ...lock };
   }
 
   /** All closed trades, imports and live, sorted by entry time. */
@@ -130,7 +163,7 @@ export class LiveEngine {
 
   private refreshRecord(): void {
     if (!this.historyDirty) return;
-    this.record.set(this.history);
+    this.record.set(this.closedTrades());
     this.historyDirty = false;
   }
 
@@ -148,18 +181,20 @@ export class LiveEngine {
     return events;
   }
 
-  private countClosed(t: Trade): void {
+  /** `alreadyBooked` is what partial exits of this trade already added to realized P&L. */
+  private countClosed(t: Trade, alreadyBooked = 0): void {
     this.day.tradesClosed++;
-    this.day.realizedPnl += t.pnl;
+    this.day.realizedPnl += t.pnl - alreadyBooked;
     if (t.pnl > 0) {
       this.day.wins++;
       this.day.consecutiveLosses = 0;
     } else {
       this.day.losses++;
       this.day.consecutiveLosses++;
-      this.day.lastLossExitAt = t.exitTime!.getTime();
+      this.day.lastLossExitAt = Math.max(this.day.lastLossExitAt ?? -Infinity, t.exitTime!.getTime());
     }
-    this.lastTodayTrade = t;
+    // Live exits arrive in time order; a seeded import may be older than a live trade already counted.
+    if (!this.lastTodayTrade || t.exitTime!.getTime() >= this.lastTodayTrade.exitTime!.getTime()) this.lastTodayTrade = t;
   }
 
   private breach(events: EngineEvent[], time: number, rule: RuleId | 'locked', symbol: string | null, tradeKey: string | null, message: string, action: RuleAction): void {
@@ -168,7 +203,7 @@ export class LiveEngine {
     this.day.breaches++;
     const cap = this.rules.maxBreachesPerDay;
     if (cap.enabled && this.day.breaches >= cap.count && !this.lock) {
-      this.lock = { until: endOfMarketDay(time), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})` };
+      this.lock = { until: endOfMarketDay(time), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})`, since: time };
       events.push({ type: 'lock', until: this.lock.until, reason: this.lock.reason });
     }
   }
@@ -211,6 +246,11 @@ export class LiveEngine {
       else if (result.kind === 'add') this.onAdd(events, fill, result.position!);
       else if (result.kind === 'reduce') {
         const p = this.positions.get(fill.symbol)!;
+        // Book the partial exit now, so the daily loss limit sees it; trued up to the trade's own P&L at close.
+        const closing = Math.abs(p.qty) - Math.abs(result.position!.qty);
+        const booked = (p.direction === 'long' ? 1 : -1) * (fill.price - p.avgEntry) * closing;
+        p.bookedPnl += booked;
+        this.day.realizedPnl += booked;
         p.qty = result.position!.qty;
         p.avgEntry = result.position!.avgEntry;
         p.mark = fill.price;
@@ -218,6 +258,9 @@ export class LiveEngine {
       } else if (result.kind === 'close') this.onClose(events, fill, result.closed!);
       result = result.flippedInto;
     }
+    // The fill moved P&L from open to realized (or opened new exposure): keep the open side in step, or a losing
+    // exit counts twice against the daily loss limit until the next marks arrive.
+    this.recomputeUnrealized();
     return events;
   }
 
@@ -239,6 +282,7 @@ export class LiveEngine {
       stopDeadline: null,
       mark: fill.price,
       refereeClosed: false,
+      bookedPnl: 0,
     };
     this.positions.set(fill.symbol, p);
     if (decl) {
@@ -250,7 +294,8 @@ export class LiveEngine {
 
     const r = this.rules;
     const t = fill.time;
-    if (this.lock && t < this.lock.until) {
+    // After the lock started, not at it: the fill whose breach created the lock was not entered while locked.
+    if (this.lock && t < this.lock.until && t > (this.lock.since ?? -Infinity)) {
       this.breach(events, t, 'locked', fill.symbol, p.tradeKey, `You are locked out until ${fmtTime(this.lock.until)} ET (${this.lock.reason}). You entered ${fill.symbol} at ${fmtTime(t)}.`, 'flatten');
     }
     if (r.maxTradesPerDay.enabled && number > r.maxTradesPerDay.count) {
@@ -312,7 +357,7 @@ export class LiveEngine {
     this.positions.delete(fill.symbol);
     this.history.push(trade);
     this.historyDirty = true;
-    this.countClosed(trade);
+    this.countClosed(trade, p?.bookedPnl ?? 0);
     const r = this.rules;
     if (trade.pnl <= 0) {
       if (r.noReentryAfterLoss.enabled) {
@@ -386,15 +431,19 @@ export class LiveEngine {
   /** Latest prices for open symbols, for unrealized P&L and the daily loss limit. */
   setMarks(marks: Record<string, number>, now: number): EngineEvent[] {
     const events: EngineEvent[] = [];
-    let unrealized = 0;
     for (const p of this.positions.values()) {
       const m = marks[p.symbol];
       if (m !== undefined && Number.isFinite(m)) p.mark = m;
-      if (p.mark !== null) unrealized += (p.mark - p.avgEntry) * p.qty;
     }
-    this.day.unrealizedPnl = unrealized;
+    this.recomputeUnrealized();
     this.checkDailyLoss(events, now);
     return events;
+  }
+
+  private recomputeUnrealized(): void {
+    let unrealized = 0;
+    for (const p of this.positions.values()) if (p.mark !== null) unrealized += (p.mark - p.avgEntry) * p.qty;
+    this.day.unrealizedPnl = unrealized;
   }
 
   private checkDailyLoss(events: EngineEvent[], now: number): void {
@@ -406,21 +455,24 @@ export class LiveEngine {
       this.day.dailyLossBreached = true;
       this.breach(events, now, 'dailyLossLimit', null, null, `Your rule: stop at ${money(-r.dollars)} for the day. You are at ${money(total)} (realized ${money(this.day.realizedPnl)}, open ${money(this.day.unrealizedPnl)}).`, r.action);
       if (r.lockRestOfDay && !this.lock) {
-        this.lock = { until: endOfMarketDay(now), reason: 'daily loss limit hit' };
+        this.lock = { until: endOfMarketDay(now), reason: 'daily loss limit hit', since: now };
         events.push({ type: 'lock', until: this.lock.until, reason: this.lock.reason });
       }
     }
   }
 
-  /** Time passing: stop deadlines, lock expiry, day rollover. Call every few seconds. */
-  tick(now: number): EngineEvent[] {
+  /**
+   * Time passing: stop deadlines, lock expiry, day rollover. Call every few seconds. `holdStops`: symbols whose
+   * stop could not be confirmed with the broker this time (a failed or rate-limited request); their deadline waits.
+   */
+  tick(now: number, holdStops: ReadonlySet<string> = new Set()): EngineEvent[] {
     const events: EngineEvent[] = [];
     this.lastSeen = Math.max(this.lastSeen, now);
     events.push(...this.rollDay(now));
     if (this.lock && this.lock.until <= now) this.lock = null;
     const r = this.rules.stopRequired;
     for (const p of this.positions.values()) {
-      if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop) {
+      if (p.stopDeadline !== null && now >= p.stopDeadline && !p.stop && !p.refereeClosed && !holdStops.has(p.symbol)) {
         p.stopDeadline = null;
         this.breach(events, now, 'stopRequired', p.symbol, p.tradeKey, `Your rule: a stop order within ${r.withinSeconds} s of entry. ${p.symbol} has been open ${Math.round((now - p.entryTime) / 1000)} s with no stop.`, r.action);
       }
@@ -433,11 +485,18 @@ export class LiveEngine {
    * Bring back what a replay of fills cannot rebuild: the lock, today's breach count (time-based breaches
    * such as a missing stop are not re-derived) and whether the daily loss limit already fired.
    */
-  restore(state: { date: string; lock: { until: number; reason: string } | null; breaches: number; dailyLossBreached: boolean }, now: number): void {
+  restore(state: { date: string; lock: { until: number; reason: string; since?: number } | null; breaches: number; dailyLossBreached: boolean }, now: number, newBreaches = 0): void {
     this.rollDay(now);
     if (state.date !== this.day.date) return;
-    if (state.lock && state.lock.until > now) this.lock = { ...state.lock };
-    this.day.breaches = Math.max(this.day.breaches, state.breaches);
+    // The saved state saw every breach of the day as it happened. A replay re-derives only the fill-based ones, and
+    // judges old fills by today's rules, so it can both miss breaches and invent them: the saved state wins.
+    // `newBreaches` are the ones a replay found because of fills never seen before (backfilled late).
+    this.lock = state.lock && state.lock.until > now ? { ...state.lock } : null;
+    this.day.breaches = state.breaches + newBreaches;
+    const cap = this.rules.maxBreachesPerDay;
+    if (newBreaches > 0 && cap.enabled && this.day.breaches >= cap.count && !this.lock) {
+      this.lock = { until: endOfMarketDay(now), reason: `${this.day.breaches} rule breaches today (your limit is ${cap.count})`, since: now };
+    }
     if (state.dailyLossBreached) {
       this.dailyLossBreached = true;
       this.day.dailyLossBreached = true;
@@ -445,14 +504,14 @@ export class LiveEngine {
   }
 
   /** Mark a position as closed by the referee so its exit is labelled, not counted as a stop-out. */
-  markRefereeClosed(symbol: string): void {
+  markRefereeClosed(symbol: string, closed = true): void {
     const p = this.positions.get(symbol);
-    if (p) p.refereeClosed = true;
+    if (p) p.refereeClosed = closed;
   }
 
   /** Who is still open and the next fill would be their stop check: for the server to poll open orders. */
   positionsAwaitingStop(): string[] {
-    return [...this.positions.values()].filter((p) => p.stopDeadline !== null && !p.stop).map((p) => p.symbol);
+    return [...this.positions.values()].filter((p) => p.stopDeadline !== null && !p.stop && !p.refereeClosed).map((p) => p.symbol);
   }
 
   private prevContext(now: number): { label: string; minutesSinceLastLoss: number | null } {

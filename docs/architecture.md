@@ -27,6 +27,18 @@ The engine (`src/engine/live.ts`) is deterministic: the same fills in the same o
 
 Fills carry a stable key, `orderId|cumQty`, so the same execution seen on the stream and in the activities backfill is stored once.
 
+## Missed fills
+
+The stream can miss a fill: the laptop slept, the service was down, or the socket went quiet without closing. Three things catch it:
+
+- **Heartbeat.** While live, the stream re-sends `listen` every 30 s and Alpaca answers. After 75 s with no message, the socket counts as dead and is replaced, and every reconnect runs a sync.
+- **Drift.** Every few seconds, Alpaca's positions are compared with the positions our fills add up to. A mismatch runs a sync, at most once a minute.
+- **Sync.** Every sync backfills fills from the activities endpoint. A backfilled fill dated today is handled "late": its breaches are stored, notified and enforced if the trade is still open, decided once the whole batch is applied. Older ones are history.
+
+A sync remembers the account, database and engine it started with, and starts over if settings switch any of them while it waits on Alpaca. Closes do the same: a queued close retry belongs to one account and one trade, and is dropped when the account changes, the trade closes, or enforcement is turned off.
+
+When a missed fill is older than fills already applied, the engine is rebuilt. The replay order is earlier days, today's imports, the saved lock, then today's fills. Any breach found from the missed fill onward that is not already stored is handled as seen late.
+
 ## What "pre-trade" means here
 
 No retail broker exposes a hook that lets a third party veto an order before it is accepted, and momentum entries are market orders that fill in milliseconds. So the Referee does two things:
@@ -60,11 +72,12 @@ No retail broker exposes a hook that lets a third party veto an order before it 
 
 ## Security posture
 
-- The service binds to 127.0.0.1 only. Requests carrying a foreign `Origin` are refused, so a web page in the same browser cannot drive it.
+- The service binds to 127.0.0.1 only. Requests whose `Host` or `Origin` is not this service on loopback (or the Vite dev server) are refused, which also defeats DNS rebinding, and a write must be sent as `application/json`, which a cross-site page cannot do without a preflight. So a web page in the same browser cannot drive it.
+- A failing disk does not stop enforcement: writes on the enforcement path are guarded, and the kill switch takes effect in memory before `config.json` is written.
 - Alpaca keys live in `config.json` with owner-only permissions, or in environment variables. They never reach the browser (the settings API returns a preview only).
 - The MCP server can read state and declare a trade. It cannot change rules, toggle enforcement or close positions.
 - Enforcement only ever reduces: cancel orders and close positions. There is no order ticket.
 
 ## Testing
 
-`npm test` runs: parser and analysis tests, engine scenarios for every rule, matcher parity against the batch parser, strategy indicators, an end-to-end service test against a fake Alpaca HTTP server and a hand-driven stream (backfill, live breach, flatten, restart replay, dry run, kill switch, HTTP API, SSE, cross-origin refusal), and an MCP client round-trip over stdio.
+`npm test` runs: parser and analysis tests, engine scenarios for every rule, matcher parity against the batch parser, strategy indicators, an end-to-end service test against a fake Alpaca HTTP server and a hand-driven stream (backfill, live breach, flatten, restart replay, dry run, kill switch, HTTP API, SSE, cross-origin refusal), the sync paths in `test/referee-sync.test.ts` (late fills, drift, imports, failing writes, an account switch mid-sync, rate limits), the client's Retry-After handling and the stream heartbeat in `test/alpaca.test.ts`, and an MCP client round-trip over stdio.

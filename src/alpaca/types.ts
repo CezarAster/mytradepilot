@@ -141,10 +141,13 @@ export interface AlpacaSnapshot {
 export class AlpacaError extends Error {
   readonly status: number;
   readonly body: string;
-  constructor(status: number, body: string, message?: string) {
+  /** How long Alpaca asked us to wait (Retry-After, or the rate-limit reset) before trying again, when it said. */
+  readonly retryAfterMs: number | null;
+  constructor(status: number, body: string, message?: string, retryAfterMs: number | null = null) {
     super(message ?? `Alpaca ${status}: ${body.slice(0, 300)}`);
     this.name = 'AlpacaError';
     this.status = status;
     this.body = body;
+    this.retryAfterMs = retryAfterMs;
   }
 }

@@ -3,6 +3,7 @@
 // Uses your installed Google Chrome (channel "chrome"); set CHROMIUM_PATH to use another Chromium.
 // Starts the referee on a temp data dir, opens every page, and fails on console errors, failed requests
 // or missing landmark text; screenshots land next to this script.
+const { chromium } = require('playwright-core');
 const { spawn } = require('node:child_process');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');

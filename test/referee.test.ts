@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request as httpRequest } from 'node:http';
 import { after, before, test } from 'node:test';
 import { AlpacaClient } from '../src/alpaca/client.ts';
 import type { TradeStream } from '../src/alpaca/stream.ts';
@@ -39,6 +40,15 @@ async function makeReferee(opts: { dryRun?: boolean; enabled?: boolean } = {}) {
   referee.onEvent((e) => events.push(e));
   await referee.start();
   return { referee, events, config };
+}
+
+/** Poll for an outcome instead of a fixed sleep, which a loaded CI machine can outlast. */
+async function waitFor(what: string, ok: () => boolean, ms = 3000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
 }
 
 before(async () => {
@@ -86,7 +96,7 @@ test('startup backfills history from activities without enforcing, then a live b
   stream.push(fillUpdate('e2', 'DDD', 'buy', 10, 30));
   clock += 31000;
   await (referee as unknown as { onTick(): Promise<void> }).onTick();
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor('the flatten', () => referee.state().recentActions.some((a) => a.kind === 'flatten' && a.symbol === 'DDD'));
   st = referee.state();
   assert.deepEqual(st.todayBreaches.map((b) => b.rule), ['stopRequired']);
   assert.ok(fake.calls.includes('DELETE /v2/positions/DDD'), `flatten sent: ${fake.calls.filter((c) => c.startsWith('DELETE')).join(',')}`);
@@ -104,7 +114,7 @@ test('startup backfills history from activities without enforcing, then a live b
   clock += 60000;
   fake.positions = [{ symbol: 'EEE', qty: '1', side: 'long', avg_entry_price: '10', current_price: '10', market_value: '10', unrealized_pl: '0', unrealized_plpc: '0', cost_basis: '10' }];
   stream.push(fillUpdate('e3', 'EEE', 'buy', 1, 10));
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor('the flatten', () => referee.state().recentActions.some((a) => a.kind === 'flatten' && a.symbol === 'EEE'));
   assert.equal(fake.calls.filter((c) => c === 'DELETE /v2/positions/EEE').length, 1);
   assert.ok(referee.state().todayBreaches.some((b) => b.rule === 'maxTradesPerDay'));
 
@@ -156,7 +166,7 @@ test('dry run logs instead of sending, kill switch turns enforcement off, and th
   fake.calls = [];
   fake.positions = [{ symbol: 'FFF', qty: '2000', side: 'long', avg_entry_price: '10', current_price: '10', market_value: '20000', unrealized_pl: '0', unrealized_plpc: '0', cost_basis: '20000' }];
   FakeStream.current!.push(fillUpdate('big', 'FFF', 'buy', 2000, 10));
-  await new Promise((r) => setTimeout(r, 50));
+  await waitFor('the dry run', () => referee.state().recentActions.some((a) => a.kind === 'dry_run'));
   const st2 = (await get('/api/state')) as StateResponse;
   assert.deepEqual(st2.todayBreaches.map((b) => b.rule).sort(), ['maxPositionDollars', 'sizeMatchesDeclaration']);
   assert.equal(st2.todayTrades.length, 0);
@@ -271,7 +281,7 @@ test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed
   fake.failClose = 4; // every in-line attempt fails; the tick loop must take over
   fake.calls = [];
   stream.push({ ...fillUpdate('kp', 'KKK', 'buy', 300, 50), order: parent });
-  await settle();
+  await waitFor('the failed close', () => referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 5 s/.test(a.detail)));
   assert.ok(fake.calls.includes('DELETE /v2/orders/kstop') && fake.calls.includes('DELETE /v2/orders/ktp'), `legs cancelled: ${fake.calls.join(', ')}`);
   assert.equal(fake.positions.length, 1, 'still open after four failed closes');
   assert.ok(referee.state().recentActions.some((a) => a.kind === 'error' && /Retrying in 5 s/.test(a.detail)));
@@ -287,8 +297,72 @@ test('fix: flatten cancels bracket legs, waits for the cancels, retries a failed
   fake.positions = [position('KKK', 300, 50)];
   const before = fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length;
   stream.push(fillUpdate('k2', 'KKK', 'buy', 300, 50));
-  await settle();
+  await waitFor('the second close', () => fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length > before);
   assert.equal(fake.calls.filter((c) => c === 'DELETE /v2/positions/KKK').length, before + 1, 'second trade flattened');
+  assert.equal(fake.positions.length, 0);
+  await referee.stop();
+});
+
+/** node:http, because fetch will not let a test set the Host header. */
+function raw(port: number, method: string, path: string, headers: Record<string, string>, body?: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, method, path, headers }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode ?? 0));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+test('fix: the API refuses a foreign Host (DNS rebinding), other localhost ports, and non-JSON writes', async () => {
+  clock = Date.parse('2026-10-19T14:00:00Z');
+  const { referee } = await makeReferee({ dryRun: true });
+  const http = new RefereeHttp(referee, { port: 0, staticDir: null, log: new Logger(null, 'error') });
+  const port = await http.listen();
+  const self = `127.0.0.1:${port}`;
+  assert.equal(await raw(port, 'GET', '/api/state', { host: self }), 200);
+  assert.equal(await raw(port, 'GET', '/api/state', { host: `localhost:${port}` }), 200);
+  assert.equal(await raw(port, 'GET', '/api/state', { host: `rebind.evil.example:${port}` }), 403, 'rebinding page');
+  assert.equal(await raw(port, 'GET', '/api/events', { host: `rebind.evil.example:${port}` }), 403, 'SSE too');
+  assert.equal(await raw(port, 'GET', '/api/state', { host: self, origin: 'http://localhost:8080' }), 403, 'another local app');
+  assert.equal(await raw(port, 'GET', '/api/state', { host: self, origin: `http://${self}` }), 200);
+  assert.equal(await raw(port, 'GET', '/api/state', { host: '127.0.0.1:5174', origin: 'http://127.0.0.1:5174' }), 200, 'the Vite dev UI through its proxy');
+
+  // A cross-site "simple" POST (text/plain, no preflight) must not reach the kill switch.
+  assert.equal(await raw(port, 'POST', '/api/kill', { host: self, 'content-type': 'text/plain' }, '{}'), 415);
+  assert.equal(await raw(port, 'POST', '/api/kill', { host: self }), 415, 'no content type');
+  assert.equal(referee.state().status.enforcement.enabled, true, 'enforcement untouched');
+  assert.equal(await raw(port, 'POST', '/api/kill', { host: self, origin: `http://${self}`, 'content-type': 'application/json' }), 200);
+  assert.equal(referee.state().status.enforcement.enabled, false);
+  await http.close();
+  await referee.stop();
+});
+
+test('fix: close-all reads the 207 multi-status, retries the symbols that failed, and marks only the closed ones', async () => {
+  clock = Date.parse('2026-10-20T14:00:00Z');
+  const { referee } = await makeReferee();
+  const stream = FakeStream.current!;
+  fake.openOrders = [];
+  fake.positions = [position('MMA', 10, 20), position('MMB', 10, 30)];
+  stream.push(fillUpdate('ma', 'MMA', 'buy', 10, 20));
+  stream.push(fillUpdate('mb', 'MMB', 'buy', 10, 30));
+  fake.failCloseAll = ['MMB'];
+  fake.calls = [];
+  const out = await referee.manualFlatten(null);
+  assert.equal(out.ok, false, out.detail);
+  assert.match(out.detail, /MMB failed/);
+  const acts = referee.state().recentActions;
+  assert.ok(acts.some((a) => a.kind === 'error' && a.symbol === 'MMB' && !a.ok), 'an error per failed symbol');
+  assert.ok(acts.some((a) => a.kind === 'flatten_all' && !a.ok));
+  const pos = referee.state().snapshot.positions;
+  assert.equal(pos.find((p) => p.symbol === 'MMA')?.refereeClosed, true);
+  assert.equal(pos.find((p) => p.symbol === 'MMB')?.refereeClosed, false);
+
+  fake.failCloseAll = [];
+  clock += 6000;
+  await tick(referee);
+  assert.ok(fake.calls.includes('DELETE /v2/positions/MMB'), `MMB retried: ${fake.calls.join(', ')}`);
   assert.equal(fake.positions.length, 0);
   await referee.stop();
 });

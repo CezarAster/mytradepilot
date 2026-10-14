@@ -109,6 +109,27 @@ export class ConfigStore {
   /** Validate, write atomically with owner-only permissions, and swap in. */
   update(patch: Partial<Config>): Config {
     const next = ConfigSchema.parse({ ...this.current, ...patch });
+    this.write(next);
+    this.current = next;
+    return next;
+  }
+
+  /**
+   * Validate and swap in first, then write. For the kill switch and the enforcement toggle, which must take effect
+   * even when the disk is full or read-only; the caller reports `writeError` (the change is lost on restart).
+   */
+  updateInMemoryFirst(patch: Partial<Config>): { config: Config; writeError: Error | null } {
+    const next = ConfigSchema.parse({ ...this.current, ...patch });
+    this.current = next;
+    try {
+      this.write(next);
+      return { config: next, writeError: null };
+    } catch (err) {
+      return { config: next, writeError: err as Error };
+    }
+  }
+
+  private write(next: Config): void {
     const tmp = `${this.file}.tmp`;
     writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
     try {
@@ -117,8 +138,6 @@ export class ConfigStore {
       // Windows: ACLs, not modes. The data dir is the user's own profile folder.
     }
     renameSync(tmp, this.file);
-    this.current = next;
-    return next;
   }
 }
 

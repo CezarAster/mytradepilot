@@ -25,9 +25,36 @@ export interface ClientOptions {
   tradingHost?: string;
   dataHost?: string;
   sleep?: (ms: number) => Promise<void>;
+  /** The longest Retry-After an idempotent request waits out in place; a longer one fails at once and says how long. */
+  maxRetryWaitMs?: number;
+}
+
+/** One symbol's outcome in a close-all. */
+export interface CloseAllResult {
+  symbol: string;
+  status: number;
+  ok: boolean;
+  message: string | null;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * The wait a 429 (or 503) asks for: Retry-After in seconds or as an HTTP date, else Alpaca's X-RateLimit-Reset
+ * (epoch seconds) when the window is used up. Null when the response does not say.
+ */
+export function retryAfterMs(headers: Headers, now = Date.now()): number | null {
+  const ra = headers.get('retry-after')?.trim();
+  if (ra) {
+    if (/^\d+(\.\d+)?$/.test(ra)) return Math.round(Number(ra) * 1000);
+    // Only a real HTTP-date ("Mon, 12 Oct 2026 15:00:05 GMT"): Date.parse also accepts "-1" or "5, 10" as dates.
+    const at = /^[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(ra) ? Date.parse(ra) : NaN;
+    if (Number.isFinite(at) && at > now) return at - now;
+  }
+  const reset = Number(headers.get('x-ratelimit-reset'));
+  if (headers.get('x-ratelimit-remaining') === '0' && Number.isFinite(reset) && reset * 1000 > now) return reset * 1000 - now;
+  return null;
+}
 
 export class AlpacaClient {
   readonly creds: AlpacaCredentials;
@@ -37,6 +64,7 @@ export class AlpacaClient {
   private readonly retries: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly maxRetryWaitMs: number;
 
   constructor(creds: AlpacaCredentials, opts: ClientOptions = {}) {
     this.creds = creds;
@@ -46,6 +74,7 @@ export class AlpacaClient {
     this.retries = opts.retries ?? 3;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.sleep = opts.sleep ?? defaultSleep;
+    this.maxRetryWaitMs = opts.maxRetryWaitMs ?? 10000;
   }
 
   private headers(): Record<string, string> {
@@ -66,13 +95,15 @@ export class AlpacaClient {
         });
         const text = await res.text();
         if (res.ok) return (text ? JSON.parse(text) : null) as T;
+        const asked = res.status === 429 || res.status === 503 ? retryAfterMs(res.headers) : null;
         const retryable = res.status === 429 || res.status >= 500;
-        if (retryable && idempotent && attempt < this.retries) {
+        if (retryable && idempotent && attempt < this.retries && (asked === null || asked <= this.maxRetryWaitMs)) {
           attempt++;
-          await this.sleep(Math.min(8000, 500 * 2 ** attempt));
+          // At least the usual backoff: a clock running ahead of Alpaca's can make the asked wait 0.
+          await this.sleep(Math.max(asked ?? 0, Math.min(8000, 500 * 2 ** attempt)));
           continue;
         }
-        throw new AlpacaError(res.status, text);
+        throw new AlpacaError(res.status, text, undefined, asked);
       } catch (err) {
         if (err instanceof AlpacaError) throw err;
         if (idempotent && attempt < this.retries) {
@@ -111,8 +142,19 @@ export class AlpacaClient {
     return this.request('DELETE', `${this.tradingHost}/v2/positions/${encodeURIComponent(symbol)}`, undefined, false);
   }
 
-  closeAllPositions(cancelOrders = true): Promise<unknown> {
-    return this.request('DELETE', `${this.tradingHost}/v2/positions${this.q({ cancel_orders: cancelOrders })}`, undefined, false);
+  /**
+   * Close every position. Alpaca answers 207 Multi-Status with one entry per symbol, so a 2xx overall does not mean
+   * every close was accepted: the caller must look at each entry.
+   */
+  async closeAllPositions(cancelOrders = true): Promise<CloseAllResult[]> {
+    const res = await this.request<unknown>('DELETE', `${this.tradingHost}/v2/positions${this.q({ cancel_orders: cancelOrders })}`, undefined, false);
+    if (!Array.isArray(res)) return [];
+    return res.map((e: { symbol?: unknown; status?: unknown; body?: unknown }) => {
+      const status = Number(e?.status);
+      const body = e?.body as { message?: unknown } | undefined;
+      const ok = status >= 200 && status < 300;
+      return { symbol: String(e?.symbol ?? '').toUpperCase(), status, ok, message: ok ? null : String(body?.message ?? `status ${e?.status}`) };
+    });
   }
 
   listOrders(params: { status?: 'open' | 'closed' | 'all'; after?: string; until?: string; limit?: number; direction?: 'asc' | 'desc'; nested?: boolean; symbols?: string } = {}): Promise<AlpacaOrder[]> {
